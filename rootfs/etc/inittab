@@ -1,0 +1,4 @@
+::sysinit:/etc/rc
+::respawn:/sbin/vmd
+hvc0::respawn:-/bin/sh
+::shutdown:/bin/sync

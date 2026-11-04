@@ -1,0 +1,14 @@
+
+  whois            who I am
+  contacts         where to find me
+  blog             open blog.b0tn3t.sh in a new tab
+  fetch            system info (also neofetch, fastfetch)
+  python           MicroPython 3
+
+  vm               talk to the browser: copy, paste, up, dl, get,
+                   save, load, reset, theme, font  (vm help)
+  ls cat vi less grep find awk sed tar ...   busybox
+
+  Drop files onto the page to upload them here.
+  Ctrl+Shift+C / Ctrl+Shift+V copy and paste.
+

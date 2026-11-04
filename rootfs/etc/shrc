@@ -1,0 +1,7 @@
+# interactive shell niceties (also read by non-login shells via $ENV)
+case $- in *i*) ;; *) return 0 2>/dev/null ;; esac
+# the title goes to the browser tab; then user@host:dir in color
+PS1='\[\e]0;\w — b0tn3t\a\]\[\e[1;32m\]\u@\h\[\e[0m\]:\[\e[1;34m\]\w\[\e[0m\]\$ '
+alias ls='ls --color=auto' ll='ls -lah --color=auto' la='ls -A --color=auto' l='ls -CF --color=auto'
+alias grep='grep --color=auto' ..='cd ..' ...='cd ../..' cls=clear
+alias py=python

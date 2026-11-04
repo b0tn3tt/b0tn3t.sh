@@ -1,0 +1,11 @@
+#!/bin/sh
+# System start. The root filesystem is 9p from the browser; /dev is
+# devtmpfs (mounted by the kernel); everything volatile goes to tmpfs.
+mount -t proc proc /proc
+mount -t sysfs sys /sys
+mount -t tmpfs -o mode=0755,size=16m run /run
+mount -t tmpfs -o mode=1777,size=64m tmp /tmp
+mkdir -p /dev/pts /run/vmd
+mount -t devpts -o mode=0620,ptmxmode=0666 devpts /dev/pts
+hostname -F /etc/hostname
+sysctl -q -w kernel.printk="1 4 1 7" vm.swappiness=0

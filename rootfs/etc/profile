@@ -1,0 +1,12 @@
+# /etc/profile: login shell setup for the browser terminal
+export PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
+export HOME=/root USER=root LOGNAME=root SHELL=/bin/sh
+export TERM=xterm-256color COLORTERM=truecolor LANG=C.UTF-8
+export EDITOR=vi VISUAL=vi PAGER=less LESS=-R
+export HISTFILE=/root/.ash_history HISTFILESIZE=2000
+export ENV=/etc/shrc
+. /etc/shrc
+for f in /etc/profile.d/*.sh; do [ -r "$f" ] && . "$f"; done
+unset f
+cd "$HOME"
+[ -r /etc/motd ] && cat /etc/motd

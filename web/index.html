@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
+<meta name="theme-color" content="#0d1117">
+<meta name="description" content="b0tn3t.sh: a tiny Linux machine running in your browser. Try whois, contacts, blog, fetch.">
+<title>b0tn3t.sh</title>
+<link rel="icon" type="image/gif" href="favicon.gif">
+<link rel="modulepreload" href="js/app.js">
+<link rel="preload" href="image/manifest.json" as="fetch" crossorigin>
+<link rel="stylesheet" href="vendor/xterm/xterm.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <main id="term" aria-label="terminal"></main>
+  <nav id="keys" aria-label="extra keys">
+    <div id="more"></div>
+    <div id="bar"></div>
+  </nav>
+  <div id="toast" class="box" role="status" aria-live="polite"><span class="msg"></span><button type="button" hidden></button></div>
+</div>
+<div id="dialog" class="overlay" role="dialog" aria-modal="true">
+  <div class="box">
+    <p class="text"></p>
+    <textarea rows="5" hidden></textarea>
+    <div class="buttons">
+      <button type="button" class="extra" hidden></button>
+      <button type="button" class="cancel">Cancel</button>
+      <button type="button" class="ok">OK</button>
+    </div>
+  </div>
+</div>
+<div id="drop" class="overlay"><div class="box">Drop files to upload them into the machine</div></div>
+<input id="files" type="file" multiple hidden>
+<noscript>b0tn3t.sh runs a small Linux machine in your browser and needs JavaScript.</noscript>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
