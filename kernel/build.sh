@@ -24,6 +24,9 @@ for frag in "$@"; do
 done
 [ "$fail" = 0 ]
 
-nice -n 19 make -s -j"${JOBS:-3}" bzImage
+# ccache when it is there (the Docker build mounts its cache), plain gcc otherwise
+cc=gcc
+command -v ccache >/dev/null && cc="ccache gcc"
+nice -n 19 make -s -j"${JOBS:-3}" CC="$cc" bzImage
 cp arch/x86/boot/bzImage "$out"
 cp .config "$out.config"

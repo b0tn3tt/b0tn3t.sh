@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Pack a directory into v86's lazy 9p format, deterministically.
 
-    mkfs9p.py <rootfs-dir> <fs.json> <flat-dir> [--epoch N]
+    mkfs9p.py <rootfs-dir> <fs.json> <flat-dir> [--epoch=N] [--cache=DIR]
 
 fs.json (version 3) holds the tree; every regular file's contents go to
 <flat-dir>/<sha256>.bin.zst and are fetched by the browser only when the
@@ -11,6 +11,7 @@ normalised, children are sorted, so the same input gives the same bytes.
 import hashlib
 import json
 import os
+import shutil
 import stat
 import subprocess
 import sys
@@ -30,12 +31,22 @@ def norm_mode(rel, st):
     return S_IFREG | perm
 
 
+CACHE = None  # dir of already compressed blobs, keyed like the output (sha256)
+
+
 def compress(src, dst):
     if os.path.exists(dst):
+        return
+    cached = os.path.join(CACHE, os.path.basename(dst)) if CACHE else None
+    if cached and os.path.exists(cached):
+        shutil.copyfile(cached, dst)
         return
     tmp = dst + ".tmp"
     with open(src, "rb") as fi, open(tmp, "wb") as fo:
         subprocess.run(["zstd", "-19", "-q", "--no-progress", "-c"], stdin=fi, stdout=fo, check=True)
+    if cached:
+        shutil.copyfile(tmp, cached + ".tmp")
+        os.replace(cached + ".tmp", cached)
     os.replace(tmp, dst)
 
 
@@ -67,11 +78,15 @@ def walk(root, rel, epoch, flat, stats):
 
 
 def main(argv):
-    args = [a for a in argv if not a.startswith("--epoch")]
+    global CACHE
+    args = [a for a in argv if not a.startswith("--")]
     epoch = int(os.environ.get("SOURCE_DATE_EPOCH", "0"))
     for a in argv:
         if a.startswith("--epoch="):
             epoch = int(a.split("=", 1)[1])
+        if a.startswith("--cache="):
+            CACHE = a.split("=", 1)[1]
+            os.makedirs(CACHE, exist_ok=True)
     if len(args) != 3:
         raise SystemExit(__doc__)
     root, out_json, flat = args

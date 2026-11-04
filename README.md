@@ -87,6 +87,11 @@ make serve      # http://localhost:8000
   timing; everything it is made of is checked.
 - **Cached:** one stage per component, so changing the page or a text file
   rebuilds in seconds; CI keeps the stages in the GitHub Actions cache.
+  BuildKit cache mounts add an apk download cache, ccache for the kernel
+  and MicroPython (a config change recompiles only what changed) and a
+  cache of zstd-compressed rootfs blobs. Builds with these caches were
+  checked to give the same 39 hashes as clean builds; `make repro`
+  disables ccache so its two builds are independent.
 
 ### Tests
 

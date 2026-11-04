@@ -7,7 +7,7 @@ out=dist/repro
 rm -rf "$out"
 for n in a b; do
   echo "repro: clean build $n" >&2
-  nice -n 19 ionice -c3 docker buildx build --builder "$builder" --no-cache --progress=quiet \
+  nice -n 19 ionice -c3 docker buildx build --builder "$builder" --no-cache --build-arg CCACHE_DISABLE=1 --progress=quiet \
     --target repro --output "type=local,dest=$out/$n" .
   (cd "$out/$n" && find . -type f | LC_ALL=C sort | xargs sha256sum) > "$out/$n.sha256"
 done

@@ -9,7 +9,11 @@
 # timestamps come from SOURCE_DATE_EPOCH. `make repro` builds twice and
 # compares hashes.
 # Caching: one stage per component, so editing the page or the text
-# commands never rebuilds the kernel, busybox or micropython.
+# commands never rebuilds the kernel, busybox or micropython. On top of the
+# layers, BuildKit cache mounts keep the apk download cache, a ccache for
+# the kernel and micropython (a config change recompiles only what changed) and
+# the zstd-compressed rootfs blobs (an unchanged file is never recompressed).
+# `make repro` sets CCACHE_DISABLE=1 so its two builds stay independent.
 
 ARG SOURCE_DATE_EPOCH=1767225600
 ARG I386_ALPINE=docker.io/i386/alpine:3.21@sha256:af1f32347969e4c5a282602cee5d6a28a624cb6ab5f8dc1105dc9780de4996d8
@@ -24,13 +28,17 @@ ARG MICROPYTHON_SHA256=d925a7c664e79a2bdf3dfcb285ba5e2237041cc35a0bd4ee573b6c571
 
 # ---------------------------------------------------------------- toolchain
 FROM --platform=linux/386 ${I386_ALPINE} AS toolchain
-RUN apk add --no-cache \
+RUN --mount=type=cache,target=/etc/apk/cache,id=apk-i386,sharing=locked \
+    apk add ccache=4.10.2-r0 \
       gcc=14.2.0-r4 make=4.4.1-r2 musl-dev=1.2.5-r12 linux-headers=6.6-r1 \
       binutils=2.43.1-r3 bc=1.07.1-r5 flex=2.6.4-r6 bison=3.8.2-r1 \
       perl=5.40.4-r0 xz=5.8.4-r0 zstd=1.5.6-r2 python3=3.12.16-r0 \
       bzip2=1.0.8-r6 diffutils=3.10-r0 findutils=4.10.0-r0
 ARG SOURCE_DATE_EPOCH
+ARG CCACHE_DISABLE=
 ENV SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH} \
+    CCACHE_DISABLE=${CCACHE_DISABLE} CCACHE_DIR=/ccache CCACHE_MAXSIZE=1G \
+    CCACHE_COMPILERCHECK=content CCACHE_NOHASHDIR=1 \
     LC_ALL=C TZ=UTC \
     CFLAGS="-Os -march=i686 -mtune=generic -pipe -ffunction-sections -fdata-sections -fno-asynchronous-unwind-tables -fno-ident" \
     LDFLAGS="-static -Wl,--gc-sections -Wl,--build-id=none -s"
@@ -44,7 +52,8 @@ RUN mkdir -p /src && tar -xJf /tmp/linux.tar.xz -C /src && mv /src/linux-${LINUX
 FROM linux-src AS kernel
 ENV KBUILD_BUILD_USER=b0tn3t KBUILD_BUILD_HOST=lfs KBUILD_BUILD_VERSION=1
 COPY kernel/build.sh kernel/b0tn3t.config /kernel/
-RUN export KBUILD_BUILD_TIMESTAMP="$(date -u -d @${SOURCE_DATE_EPOCH} '+%Y-%m-%d')" && \
+RUN --mount=type=cache,target=/ccache,id=ccache-i386,sharing=locked \
+    export KBUILD_BUILD_TIMESTAMP="$(date -u -d @${SOURCE_DATE_EPOCH} '+%Y-%m-%d')" && \
     mkdir -p /out && sh /kernel/build.sh /src/linux /out/bzImage /kernel/b0tn3t.config
 
 FROM scratch AS kernel-out
@@ -54,7 +63,8 @@ COPY --from=kernel /out/ /
 FROM linux-src AS kernel-kvmd
 ENV KBUILD_BUILD_USER=b0tn3t KBUILD_BUILD_HOST=lfs KBUILD_BUILD_VERSION=1
 COPY kernel/build.sh kernel/b0tn3t.config kernel/kvmd/ /kernel/
-RUN cp /kernel/b0tn3t-vmd.c /src/linux/drivers/char/ && \
+RUN --mount=type=cache,target=/ccache,id=ccache-i386,sharing=locked \
+    cp /kernel/b0tn3t-vmd.c /src/linux/drivers/char/ && \
     sed -i '$ d' /src/linux/drivers/char/Kconfig && \
     printf 'config B0TN3T_VMD\n\tbool "b0tn3t.sh browser link (vmd) in the kernel"\n\tdepends on TTY\n\nendmenu\n' >> /src/linux/drivers/char/Kconfig && \
     echo 'obj-$(CONFIG_B0TN3T_VMD) += b0tn3t-vmd.o' >> /src/linux/drivers/char/Makefile && \
@@ -70,6 +80,8 @@ FROM toolchain AS busybox
 ARG BUSYBOX_VERSION BUSYBOX_SHA256 JOBS=3
 ADD --checksum=sha256:${BUSYBOX_SHA256} https://busybox.net/downloads/busybox-${BUSYBOX_VERSION}.tar.bz2 /tmp/bb.tar.bz2
 COPY userland/busybox.config userland/kconfig-merge.py /build/
+# no ccache here: it changed busybox's bytes (kernel and micropython come
+# out identical with it), and busybox only takes seconds to build
 RUN mkdir -p /src && tar -xjf /tmp/bb.tar.bz2 -C /src && cd /src/busybox-${BUSYBOX_VERSION} && \
     export KCONFIG_NOTIMESTAMP=1 && \
     make -s allnoconfig >/dev/null && \
@@ -84,10 +96,11 @@ RUN mkdir -p /src && tar -xjf /tmp/bb.tar.bz2 -C /src && cd /src/busybox-${BUSYB
 FROM toolchain AS micropython
 ARG MICROPYTHON_VERSION MICROPYTHON_SHA256 JOBS=3
 ADD --checksum=sha256:${MICROPYTHON_SHA256} https://github.com/micropython/micropython/releases/download/v${MICROPYTHON_VERSION}/micropython-${MICROPYTHON_VERSION}.tar.xz /tmp/mp.tar.xz
-RUN mkdir -p /src && nice -n 19 tar -xJf /tmp/mp.tar.xz -C /src && rm /tmp/mp.tar.xz && \
+RUN --mount=type=cache,target=/ccache,id=ccache-i386,sharing=locked \
+    mkdir -p /src && nice -n 19 tar -xJf /tmp/mp.tar.xz -C /src && rm /tmp/mp.tar.xz && \
     cd /src/micropython-${MICROPYTHON_VERSION} && \
-    nice -n 19 make -s -j${JOBS} -C mpy-cross CFLAGS_EXTRA=-DMICROPY_FLOAT_USE_NATIVE_FLT16=0 && \
-    nice -n 19 make -s -j${JOBS} -C ports/unix VARIANT=standard \
+    nice -n 19 make -s -j${JOBS} -C mpy-cross CC="ccache gcc" CFLAGS_EXTRA=-DMICROPY_FLOAT_USE_NATIVE_FLT16=0 && \
+    nice -n 19 make -s -j${JOBS} -C ports/unix VARIANT=standard CC="ccache gcc" \
       MICROPY_PY_FFI=0 MICROPY_PY_SSL=0 MICROPY_PY_SOCKET=0 MICROPY_PY_BTREE=0 MICROPY_PY_THREAD=0 \
       COPT="-Os -DNDEBUG -march=i686 -fdata-sections -ffunction-sections -DMICROPY_FLOAT_USE_NATIVE_FLT16=0" \
       LDFLAGS_EXTRA="-static -Wl,--gc-sections -Wl,--build-id=none" && \
@@ -121,7 +134,8 @@ COPY --from=tools /out/vm /out/fetch /rootfs/usr/bin/
 COPY rootfs/ /rootfs/
 COPY content/ /content/
 COPY userland/gen-commands.sh userland/mkfs9p.py /build/
-RUN cd /rootfs && \
+RUN --mount=type=cache,target=/zcache,id=rootfs-zst \
+    cd /rootfs && \
     mkdir -p dev proc sys run tmp root mnt usr/local/bin && \
     for n in python python3; do ln -sf micropython usr/bin/$n; done && \
     for n in neofetch fastfetch screenfetch pfetch; do ln -sf fetch usr/bin/$n; done && \
@@ -129,7 +143,7 @@ RUN cd /rootfs && \
     ln -sf /run/vmd/localtime etc/localtime && \
     sh /build/gen-commands.sh /content /rootfs && \
     chmod 755 etc/rc sbin/vmd usr/bin/vm usr/bin/fetch && \
-    mkdir -p /out && python3 /build/mkfs9p.py /rootfs /out/fs.json /out/flat && \
+    mkdir -p /out && python3 /build/mkfs9p.py /rootfs /out/fs.json /out/flat --cache=/zcache && \
     du -sh /rootfs /out/flat
 
 FROM scratch AS rootfs-out
