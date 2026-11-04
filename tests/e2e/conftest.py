@@ -69,7 +69,9 @@ def make_driver(name, downloads, mobile=False):
         d = webdriver.Firefox(options=o)
     else:
         o = webdriver.ChromeOptions()
-        o.binary_location = "/usr/bin/chromium"
+        chrome = os.environ.get("CHROME_BIN") or ("/usr/bin/chromium" if os.path.exists("/usr/bin/chromium") else None)
+        if chrome:
+            o.binary_location = chrome
         for a in ["--headless=new", "--no-first-run", "--disable-gpu", "--disable-dev-shm-usage", "--js-flags=--max-old-space-size=512",
                   "--disable-features=BackForwardCache", "--renderer-process-limit=2"]:
             o.add_argument(a)

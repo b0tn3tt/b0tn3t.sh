@@ -227,6 +227,7 @@ def test_mobile_key_bar(browser_name, server, downloads):
         bar = d.find_element(By.CSS_SELECTOR, "#bar")
         assert bar.is_displayed()
         assert p.js("return window.vm.term.options.fontSize") == 13
+        assert "dom renderer" in p.run("vm info"), "touch screens use the DOM renderer"
         # Ctrl via the sticky key interrupts a running command
         p.keys("sleep 300\n")
         time.sleep(0.5)

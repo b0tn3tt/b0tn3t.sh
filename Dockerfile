@@ -184,3 +184,16 @@ COPY web/js/ /js/
 COPY --from=xterm /out/ /vendor/xterm/
 COPY vendor/libv86.mjs vendor/v86.wasm vendor/seabios.bin vendor/vgabios.bin /vendor/v86/
 COPY --from=image /image/ /image/
+
+# ---------------------------------------------------------------- reproducibility
+# Everything that must be bit-for-bit identical between two clean builds
+# (`make repro`). The warm snapshot is not here: it records a live
+# machine, its bytes depend on timing.
+FROM scratch AS repro
+COPY --from=kernel /out/bzImage /kernel/
+COPY --from=kernel-kvmd /out/bzImage-kvmd /kernel/
+COPY --from=busybox /out/bin/busybox /bin/
+COPY --from=micropython /out/micropython /bin/
+COPY --from=tools /out/ /bin/
+COPY --from=rootfs /out/ /rootfs/
+COPY --from=xterm /out/ /xterm/

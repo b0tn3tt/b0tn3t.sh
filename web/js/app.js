@@ -53,9 +53,11 @@ term.unicode.activeVersion = "11";
 term.open($("#term"));
 
 let webgl = null;
+// auto: WebGL on desktops; the DOM renderer on touch screens, where
+// WebGL at a devicePixelRatio of 3 drew glyphs at the wrong scale
 async function setRenderer(kind) {
   if (webgl) { webgl.dispose(); webgl = null; }
-  if (kind === "dom") return;
+  if (kind === "dom" || (kind === "auto" && touch)) return;
   try {
     const { WebglAddon } = await import("../vendor/xterm/addon-webgl.mjs");
     const a = new WebglAddon();
