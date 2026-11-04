@@ -1,9 +1,9 @@
 name: Keep build caches warm
 
 # GitHub evicts Actions caches that haven't been accessed for 7 days.
-# Restoring them every few days resets that timer, so a deploy after a long
-# pause still hits both the Docker layer cache and the compressed rootfs cache.
-# Keys and paths must match deploy.yml exactly (the path is part of the cache version).
+# Reading them every few days resets that timer, so a deploy after a long
+# pause still hits the cached kernel, busybox and micropython stages.
+# The cache scope must match deploy.yml (type=gha,scope=b0tn3t).
 
 on:
   schedule:
@@ -15,24 +15,17 @@ permissions:
 
 jobs:
   touch:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          sparse-checkout: alpine/Dockerfile
-          sparse-checkout-cone-mode: false
+      - uses: actions/checkout@v4
 
-      - name: Touch Docker layer cache
-        uses: actions/cache/restore@v4
+      - uses: docker/setup-buildx-action@v3
         with:
-          path: /tmp/.buildx-cache
-          key: ${{ runner.os }}-buildx-${{ hashFiles('alpine/Dockerfile') }}
+          driver-opts: image=moby/buildkit:v0.34.2
 
-      - name: Touch Alpine rootfs flat cache
-        uses: actions/cache/restore@v4
-        with:
-          path: dist/alpine-rootfs-flat
-          key: ${{ runner.os }}-rootfs-flat-
-          restore-keys: |
-            ${{ runner.os }}-rootfs-flat-
+      # every stage of the `repro` target comes from the cache: nothing is
+      # rebuilt, but each cache entry is read (and so kept alive)
+      - name: Touch the build cache
+        run: |
+          docker buildx build --target repro --output type=cacheonly \
+            --cache-from type=gha,scope=b0tn3t .
