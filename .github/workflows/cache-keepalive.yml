@@ -1,0 +1,38 @@
+name: Keep build caches warm
+
+# GitHub evicts Actions caches that haven't been accessed for 7 days.
+# Restoring them every few days resets that timer, so a deploy after a long
+# pause still hits both the Docker layer cache and the compressed rootfs cache.
+# Keys and paths must match deploy.yml exactly (the path is part of the cache version).
+
+on:
+  schedule:
+    - cron: '17 4 */3 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  touch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: alpine/Dockerfile
+          sparse-checkout-cone-mode: false
+
+      - name: Touch Docker layer cache
+        uses: actions/cache/restore@v4
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-${{ hashFiles('alpine/Dockerfile') }}
+
+      - name: Touch Alpine rootfs flat cache
+        uses: actions/cache/restore@v4
+        with:
+          path: dist/alpine-rootfs-flat
+          key: ${{ runner.os }}-rootfs-flat-
+          restore-keys: |
+            ${{ runner.os }}-rootfs-flat-
