@@ -31,7 +31,7 @@ static const char *usage_text =
 	"  get <url> [-o file] fetch a URL through the browser\n"
 	"  save [name]         save the machine (name: extra snapshot)\n"
 	"  load [name]         restore the save or a snapshot\n"
-	"  snaps               list snapshots\n"
+	"  snaps [rm <name>]   list or remove snapshots\n"
 	"  reset [-y]          wipe everything and start fresh\n"
 	"  info                browser, terminal and storage info\n"
 	"  theme [name]        list or set the terminal theme\n"
@@ -337,8 +337,13 @@ int main(int argc, char **argv)
 		return cmd_get(argc, argv);
 	if (!strcmp(cmd, "save") || !strcmp(cmd, "load") || !strcmp(cmd, "theme") || !strcmp(cmd, "font"))
 		return simple(cmd, arg);
-	if (!strcmp(cmd, "snaps") || !strcmp(cmd, "info"))
+	if (!strcmp(cmd, "info"))
 		return simple(cmd, "");
+	if (!strcmp(cmd, "snaps")) { /* vm snaps [rm <name>] */
+		char a[256];
+		join(a, sizeof a, argc > 0 ? argv[0] : "", argc > 1 ? " " : "", argc > 1 ? argv[1] : "", (char *)NULL);
+		return simple("snaps", a);
+	}
 	if (!strcmp(cmd, "reset")) {
 		if (strcmp(arg, "-y")) {
 			if (!isatty(0))

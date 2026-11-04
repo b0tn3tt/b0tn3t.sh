@@ -65,6 +65,15 @@ export class VmLink {
     try { await this.call(T.PING, "", { timeout }); return true; } catch { return false; }
   }
 
+  // true when the guest shell waits at its prompt (vmd knows); null if unknown
+  async idle(timeout = 3000) {
+    try {
+      const m = await this.call(T.PING, "", { timeout });
+      const h = text(m.header);
+      return h === "idle=1" ? true : h === "idle=0" ? false : null;
+    } catch { return null; }
+  }
+
   async exec(cmd, opts) {
     const m = await this.call(T.EXEC, cmd, { timeout: 120000, ...opts });
     return { code: +text(m.header), out: text(m.body), bytes: m.body };

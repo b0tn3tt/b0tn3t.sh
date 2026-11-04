@@ -27,6 +27,7 @@
 #include <linux/umh.h>
 #include <linux/vmalloc.h>
 #include <linux/workqueue.h>
+#include <asm/unaligned.h>
 
 #undef MODULE_PARAM_PREFIX
 #define MODULE_PARAM_PREFIX "vmd."
@@ -393,8 +394,11 @@ static void apply_hello(const char *h, size_t len)
 		s64 ms;
 
 		if (!kstrtos64(v, 10, &ms) && ms > 0) {
-			struct timespec64 ts = { .tv_sec = div_s64(ms, 1000), .tv_nsec = (ms % 1000) * NSEC_PER_MSEC };
+			s32 rem;
+			struct timespec64 ts;
 
+			ts.tv_sec = div_s64_rem(ms, 1000, &rem); /* no 64-bit % on i386 */
+			ts.tv_nsec = rem * NSEC_PER_MSEC;
 			do_settimeofday64(&ts);
 		}
 	}
@@ -525,8 +529,8 @@ static void browser_frame(void *ctx, u8 type, u32 id, const u8 *p, u32 len)
 
 			/* a new page: fail what the old one never answered, except
 			 * `keep` (the `vm save` the page resumes after a restore) */
-			if (hello_get(m->hdr, m->hlen, "keep", keep, sizeof(keep)))
-				kstrtou32(keep, 10, &k);
+			if (hello_get(m->hdr, m->hlen, "keep", keep, sizeof(keep)) && kstrtou32(keep, 10, &k))
+				k = 0;
 			mutex_lock(&sessions_lock);
 			list_for_each_entry(it, &sessions, node)
 				if (it->id && !it->replied && it->id != k) {

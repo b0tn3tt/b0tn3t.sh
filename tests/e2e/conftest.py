@@ -63,11 +63,15 @@ def make_driver(name, downloads, mobile=False):
         o.set_preference("browser.download.useDownloadDir", True)
         o.set_preference("browser.helperApps.neverAsk.saveToDisk", "application/octet-stream")
         o.set_preference("dom.disable_open_during_load", False)
+        # every test reloads a page with a 128 MB machine: don't keep old ones around
+        o.set_preference("browser.sessionhistory.max_total_viewers", 0)
+        o.set_preference("dom.ipc.processCount", 1)
         d = webdriver.Firefox(options=o)
     else:
         o = webdriver.ChromeOptions()
         o.binary_location = "/usr/bin/chromium"
-        for a in ["--headless=new", "--no-first-run", "--disable-gpu", "--disable-dev-shm-usage", "--js-flags=--max-old-space-size=512"]:
+        for a in ["--headless=new", "--no-first-run", "--disable-gpu", "--disable-dev-shm-usage", "--js-flags=--max-old-space-size=512",
+                  "--disable-features=BackForwardCache", "--renderer-process-limit=2"]:
             o.add_argument(a)
         o.add_experimental_option("prefs", {"download.default_directory": str(downloads), "download.prompt_for_download": False})
         o.set_capability("goog:loggingPrefs", {"browser": "ALL"})
@@ -77,6 +81,7 @@ def make_driver(name, downloads, mobile=False):
         d = webdriver.Chrome(options=o)
     d.set_window_size(1200, 800)
     d.set_script_timeout(120)
+    d.set_page_load_timeout(60)
     return d
 
 
@@ -122,8 +127,10 @@ class Page:
             "window.vm.exec(arguments[0]).then(r => arguments[1]([r.code, r.out]))", cmd)
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture
 def driver(browser_name, downloads):
+    # a fresh browser (and profile) per test: v86's JIT and saved states make
+    # a page heavy, and memory would pile up over a long run
     d = make_driver(browser_name, downloads)
     yield d
     d.quit()

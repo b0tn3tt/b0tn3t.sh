@@ -50,6 +50,21 @@ RUN export KBUILD_BUILD_TIMESTAMP="$(date -u -d @${SOURCE_DATE_EPOCH} '+%Y-%m-%d
 FROM scratch AS kernel-out
 COPY --from=kernel /out/ /
 
+# experimental: the same kernel with vmd built in (drivers/char/b0tn3t-vmd.c)
+FROM linux-src AS kernel-kvmd
+ENV KBUILD_BUILD_USER=b0tn3t KBUILD_BUILD_HOST=lfs KBUILD_BUILD_VERSION=1
+COPY kernel/build.sh kernel/b0tn3t.config kernel/kvmd/ /kernel/
+RUN cp /kernel/b0tn3t-vmd.c /src/linux/drivers/char/ && \
+    sed -i '$ d' /src/linux/drivers/char/Kconfig && \
+    printf 'config B0TN3T_VMD\n\tbool "b0tn3t.sh browser link (vmd) in the kernel"\n\tdepends on TTY\n\nendmenu\n' >> /src/linux/drivers/char/Kconfig && \
+    echo 'obj-$(CONFIG_B0TN3T_VMD) += b0tn3t-vmd.o' >> /src/linux/drivers/char/Makefile && \
+    echo 'CONFIG_B0TN3T_VMD=y' > /kernel/kvmd.config && \
+    export KBUILD_BUILD_TIMESTAMP="$(date -u -d @${SOURCE_DATE_EPOCH} '+%Y-%m-%d')" && \
+    mkdir -p /out && sh /kernel/build.sh /src/linux /out/bzImage-kvmd /kernel/b0tn3t.config /kernel/kvmd.config
+
+FROM scratch AS kvmd-out
+COPY --from=kernel-kvmd /out/bzImage-kvmd /
+
 # ---------------------------------------------------------------- busybox
 FROM toolchain AS busybox
 ARG BUSYBOX_VERSION BUSYBOX_SHA256 JOBS=3

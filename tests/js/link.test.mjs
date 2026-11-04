@@ -122,3 +122,14 @@ test("replyTo answers a request id directly", () => {
   assert.equal(text(s.fromPage[0].header), "0");
   assert.equal(text(s.fromPage[0].body), "machine saved (2.4 MB)\n");
 });
+
+test("idle() reads the shell state from PONG", async () => {
+  const s = setup();
+  for (const [h, want] of [["idle=1", true], ["idle=0", false], ["", null]]) {
+    const p = s.link.idle(1000);
+    await tick();
+    const m = s.fromPage.at(-1);
+    s.toPage(message(T.PONG, m.id, h));
+    assert.equal(await p, want, h);
+  }
+});

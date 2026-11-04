@@ -116,8 +116,8 @@ def main():
         check(lt.startswith(b"TZif2") and lt.endswith(b"\n<+05>-5\n"), "localtime written")
 
         br.send(msg("P", B | 2))
-        t, i, _, _ = br.message()
-        check(t == "p" and i == B | 2, "PING -> PONG")
+        t, i, h, _ = br.message()
+        check(t == "p" and i == B | 2 and h == b"idle=?", f"PING -> PONG {h}")
 
         br.send(msg("X", B | 3, b"echo hi; echo err >&2; exit 3"))
         t, i, h, body = br.message()
@@ -201,7 +201,7 @@ def main():
         check(finish(p)[0] == 0, "blog ok")
 
         for args, header in [(("theme", "amber"), b"theme\0amber"), (("font", "16"), b"font\x0016"),
-                             (("save", "snap1"), b"save\0snap1"), (("snaps",), b"snaps\0"), (("reset", "-y"), b"reset\0")]:
+                             (("save", "snap1"), b"save\0snap1"), (("snaps",), b"snaps\0"), (("snaps", "rm", "old"), b"snaps\0rm old"), (("reset", "-y"), b"reset\0")]:
             p = vm(*args)
             t, i, h, _ = br.message()
             check(h == header, f"{args} -> {h}")

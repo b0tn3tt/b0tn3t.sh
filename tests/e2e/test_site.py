@@ -1,5 +1,5 @@
-"""The site in real browsers. Tests run in file order and share one
-browser profile per browser, like one visitor coming back."""
+"""The site in real browsers. Every test gets a fresh browser profile;
+tests that need a returning visitor reload the page themselves."""
 import base64
 import re
 import time
@@ -56,9 +56,14 @@ def test_terminal_size_follows_the_window(page, driver):
     driver.set_window_size(1200, 800)
 
 
-def test_unicode_and_title(page):
+def test_unicode_and_title(page, browser_name):
     page.open()
-    assert page.run("echo 'привет 🐱 ✓'").strip() == "привет 🐱 ✓"
+    assert page.run("echo 'привет ✓'").strip() == "привет ✓"
+    if browser_name == "firefox":  # chromedriver can't type characters outside the BMP
+        assert page.run("echo '🐱'").strip() == "🐱"
+    else:
+        page.js("window.vm.term.input(\"echo 'кот 🐱'\\r\")")
+        page.wait(lambda s: "\nкот 🐱\n" in s, 10, "emoji echo")
     page.run("cd /etc")
     WebDriverWait(page.d, 5).until(lambda d: d.title.startswith("/etc"))
     page.run("cd")
@@ -111,6 +116,8 @@ def test_upload_with_vm_up(page, tmp_path):
     page.open()
     f = tmp_path / "hello upload.txt"
     f.write_text("uploaded from the computer\n")
+    # headless browsers cancel the native file chooser at once: keep it shut
+    page.js("document.querySelector('#files').click = () => {}")
     page.keys("mkdir -p /root/up && vm up /root/up\n")
     page.wait(lambda s: "choose files in the browser" in s, 10, "vm up prompt")
     page.js("const i = document.querySelector('#files'); i.hidden = false; i.style.cssText = 'position:fixed;top:0;left:0;z-index:99';")
@@ -190,6 +197,10 @@ def test_info(page):
 
 def test_reset_wipes_everything(page):
     page.open()
+    page.run("echo 'still here' > /root/persist.txt && vm theme matrix")
+    assert "machine saved" in page.run("vm save")
+    page.open()
+    assert page.run("cat /root/persist.txt").strip() == "still here"
     page.keys("vm reset -y\n")
     time.sleep(1.5)
     page.open()
@@ -229,7 +240,8 @@ def test_mobile_key_bar(browser_name, server, downloads):
         # history with the arrow key
         p.run("echo from-history")
         tap("UP")
-        p.wait(lambda s: s.rstrip().endswith("echo from-history"), 5, "history recall")
+        # busybox wraps long lines itself on a narrow screen: compare without newlines
+        p.wait(lambda s: s.replace("\n", "").rstrip().endswith("echo from-history"), 5, "history recall")
         p.keys("\n")
         p.wait(lambda s: s.count("from-history\n") >= 2, 5)
     finally:

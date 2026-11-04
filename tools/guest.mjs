@@ -27,6 +27,7 @@ export async function startGuest({
   onRequest = null,
   serial = false,       // echo the kernel console (ttyS0) to stderr
   tick = null,          // clock tick the state was saved at (default: <state>.tick or manifest)
+  kernel = null,        // another bzImage (the in-kernel vmd variant)
 } = {}) {
   if (state) {
     if (tick == null && fs.existsSync(state + ".tick")) tick = +fs.readFileSync(state + ".tick", "utf8");
@@ -48,7 +49,7 @@ export async function startGuest({
     disable_speaker: true,
   };
   if (state) opts.initial_state = { url: state };
-  else Object.assign(opts, { bzimage: { url: path.join(image, "bzImage") }, cmdline });
+  else Object.assign(opts, { bzimage: { url: kernel || path.join(image, "bzImage") }, cmdline });
 
   const emulator = new V86(opts);
   const g = new Guest(emulator, { onRequest, serial });

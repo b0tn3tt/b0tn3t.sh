@@ -403,9 +403,15 @@ static void on_port_frame(void *ctx, const struct vmd_frame_hdr *h, const uint8_
 			send_msg(port, VMD_READY, m->id, VMD_VERSION "\n", NULL, 0);
 			break;
 		}
-		case VMD_PING:
-			send_msg(port, VMD_PONG, m->id, NULL, NULL, 0);
+		case VMD_PING: {
+			/* the answer says whether the shell sits at its prompt: the
+			 * page only autosaves then (snapshots of busy jobs can restore
+			 * into a stuck terminal) */
+			struct stat st;
+			int idle = stat(term_path, &st) == 0 ? tty_idle("/proc", tty_nr_of(st.st_rdev)) : -1;
+			send_msg(port, VMD_PONG, m->id, idle == 1 ? "idle=1" : idle == 0 ? "idle=0" : "idle=?", NULL, 0);
 			break;
+		}
 		case VMD_EXEC:
 			m->hdr[m->hlen] = 0;
 			job_start(m->id, m->hdr);
@@ -492,6 +498,14 @@ int main(int argc, char **argv)
 	if (argc > 4) term_path = argv[4];
 	signal(SIGPIPE, SIG_IGN);
 	mkdir(run_dir, 0755);
+	/* a kernel with the vmd driver built in has /sys/module/vmd: give the
+	 * driver a moment to claim hvc1 */
+	if (argc == 1 && access("/sys/module/vmd", F_OK) == 0)
+		for (int i = 0; i < 30 && access("/dev/vmd", F_OK); i++)
+			usleep(100000);
+	if (argc == 1 && access("/dev/vmd", F_OK) == 0)
+		for (;;)
+			pause(); /* the in-kernel vmd owns hvc1; stay put so init won't respawn us */
 	for (int i = 0; i < MAX_CLIENTS; i++)
 		clients[i].fd = -1;
 	port = open_port();

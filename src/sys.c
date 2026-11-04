@@ -127,11 +127,12 @@ static int read_cwd(const char *proc, long pid, char *out, size_t cap)
 	return 0;
 }
 
-void fg_cwd(const char *proc, unsigned tty_nr, const char *fallback, char *out, size_t cap)
+/* find the session leader on tty_nr; returns its pid, fills tpgid */
+static long session_on(const char *proc, unsigned tty_nr, long *tpgid_out)
 {
 	DIR *d = opendir(proc);
 	struct dirent *e;
-	long leader = -1, fg = -1;
+	long found = -1;
 	while (d && (e = readdir(d))) {
 		if (!isdigit((unsigned char)e->d_name[0]))
 			continue;
@@ -158,23 +159,31 @@ void fg_cwd(const char *proc, unsigned tty_nr, const char *fallback, char *out, 
 			ok = end != p;
 			p = end;
 		}
-		if (!ok)
-			continue;
-		long sid = f[2], tpgid = f[4];
-		unsigned tty = (unsigned)f[3];
-		if (tty == tty_nr && pid == sid) {
-			leader = pid;
-			fg = tpgid;
+		if (ok && (unsigned)f[3] == tty_nr && pid == f[2]) {
+			found = pid;
+			*tpgid_out = f[4];
 			break;
 		}
 	}
 	if (d)
 		closedir(d);
-	if (fg > 0 && read_cwd(proc, fg, out, cap) == 0)
+	return found;
+}
+
+void fg_cwd(const char *proc, unsigned tty_nr, const char *fallback, char *out, size_t cap)
+{
+	long fg = -1, leader = session_on(proc, tty_nr, &fg);
+	if (leader > 0 && fg > 0 && read_cwd(proc, fg, out, cap) == 0)
 		return;
 	if (leader > 0 && read_cwd(proc, leader, out, cap) == 0)
 		return;
 	join(out, cap, fallback, (char *)NULL);
+}
+
+int tty_idle(const char *proc, unsigned tty_nr)
+{
+	long fg = -1, leader = session_on(proc, tty_nr, &fg);
+	return leader < 0 ? -1 : fg == leader;
 }
 
 int hello_get(const char *hdr, size_t len, const char *key, char *out, size_t cap)

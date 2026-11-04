@@ -111,6 +111,12 @@ int main(void)
 	CHECK(!strcmp(cwd, "/root/projects"));
 	fg_cwd(proc, 1088, "/fallback", cwd, sizeof cwd);
 	CHECK(!strcmp(cwd, "/fallback"));
+	CHECK(tty_idle(proc, 58624) == 0);        /* job 30 is in the foreground */
+	CHECK(tty_idle(proc, 1088) == -1);        /* nobody on ttyS0 */
+	char idleproc[] = "/tmp/procXXXXXX";
+	CHECK(mkdtemp(idleproc) != NULL);
+	put_stat(idleproc, 20, 20, 58624, 20, "/root"); /* shell at its prompt */
+	CHECK(tty_idle(idleproc, 58624) == 1);
 	fg_cwd("/nonexistent", 58624, "/x", cwd, sizeof cwd);
 	CHECK(!strcmp(cwd, "/x"));
 

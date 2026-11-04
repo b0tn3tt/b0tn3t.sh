@@ -19,9 +19,10 @@ const params = new URLSearchParams(location.search);
 const touch = matchMedia("(pointer: coarse)").matches;
 const enc = new TextEncoder();
 const dec = new TextDecoder();
-const t0 = performance.now();
+// wall clock: performance.now() is the (shifted) emulator clock, see clock.js
+const t0 = Date.now();
 const timings = {};
-const mark = (k) => { timings[k] = Math.round(performance.now() - t0); };
+const mark = (k) => { timings[k] = Date.now() - t0; };
 
 const safeStorage = (() => { try { localStorage.setItem("b0tn3t.t", "1"); localStorage.removeItem("b0tn3t.t"); return localStorage; } catch { return { getItem: () => null, setItem() {}, removeItem() {} }; } })();
 const settings = new Settings(safeStorage, touch);
@@ -398,14 +399,19 @@ async function saveMachine(key = MAIN, reply = null) {
   try { return await saving; } finally { saving = null; }
 }
 
+// Autosave only while the shell waits at its prompt: a snapshot of a
+// running job can restore into a terminal that no longer answers.
+async function autosave() {
+  if (!dirty || !booted || !settings.get("autosave") || saving) return;
+  if ((await link.idle()) === false) { scheduleAutosave(); return; }
+  await saveMachine().catch((e) => console.warn("autosave", e));
+}
 function scheduleAutosave() {
   if (!settings.get("autosave")) return;
   clearTimeout(autosaveTimer);
-  autosaveTimer = setTimeout(() => { if (dirty) saveMachine().catch((e) => console.warn("autosave", e)); }, 20000);
+  autosaveTimer = setTimeout(autosave, 20000);
 }
-document.addEventListener("visibilitychange", () => {
-  if (document.hidden && dirty && booted && settings.get("autosave")) saveMachine().catch((e) => console.warn("autosave", e));
-});
+document.addEventListener("visibilitychange", () => { if (document.hidden) autosave(); });
 
 async function wipeEverything() {
   clearTimeout(autosaveTimer);
@@ -693,10 +699,15 @@ window.vm = {
   link: null,
   exec: async (cmd) => { await ready.promise; return link.exec(cmd); },
   save: (name) => saveMachine(name ? snapKey(name) : MAIN),
+  // the terminal text, with soft-wrapped lines joined back together
   screen: () => {
     const b = term.buffer.active, out = [];
-    for (let i = 0; i < b.length; i++) out.push(b.getLine(i).translateToString(true));
-    return out.join("\n").replace(/\s+$/, "");
+    for (let i = 0; i < b.length; i++) {
+      const line = b.getLine(i);
+      const s = line.translateToString(!line.isWrapped && !(b.getLine(i + 1) || {}).isWrapped);
+      if (line.isWrapped && out.length) out[out.length - 1] += s; else out.push(s);
+    }
+    return out.map((l) => l.replace(/\s+$/, "")).join("\n").replace(/\s+$/, "");
   },
 };
 

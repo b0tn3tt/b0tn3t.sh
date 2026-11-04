@@ -29,6 +29,11 @@ unsigned tty_nr_of(dev_t rdev);
  * Falls back to `fallback`. */
 void fg_cwd(const char *proc, unsigned tty_nr, const char *fallback, char *out, size_t cap);
 
+/* 1 when the shell on that terminal is waiting at its prompt (no
+ * foreground job: the tty's foreground group is the session's own), 0 when
+ * a job runs, -1 when no session is found. */
+int tty_idle(const char *proc, unsigned tty_nr);
+
 /* Parse one "key=value" line of a HELLO header. Returns 1 when the key
  * matches and copies the value (NUL-terminated) into out. */
 int hello_get(const char *hdr, size_t len, const char *key, char *out, size_t cap);
