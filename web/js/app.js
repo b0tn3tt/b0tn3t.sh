@@ -2,7 +2,6 @@
 import { now as clockNow, atLeast } from "./clock.js"; // must come before libv86
 import { Terminal } from "../vendor/xterm/xterm.mjs";
 import { FitAddon } from "../vendor/xterm/addon-fit.mjs";
-import { WebLinksAddon } from "../vendor/xterm/addon-web-links.mjs";
 import { Unicode11Addon } from "../vendor/xterm/addon-unicode11.mjs";
 import { SerializeAddon } from "../vendor/xterm/addon-serialize.mjs";
 import { V86 } from "../vendor/v86/libv86.mjs";
@@ -15,6 +14,7 @@ import { StateStore, MAIN, SNAP, snapKey, gzip, gunzip, mb, LIMIT } from "./stor
 import { Quiet } from "./quiet.js";
 import { netDevice } from "./net.js";
 import { Power } from "./power.js";
+import { linkProvider, openLink } from "./links.js";
 
 const $ = (s) => document.querySelector(s);
 const params = new URLSearchParams(location.search);
@@ -49,7 +49,10 @@ const fit = new FitAddon();
 const serializer = new SerializeAddon();
 term.loadAddon(fit);
 term.loadAddon(serializer);
-term.loadAddon(new WebLinksAddon((e, uri) => { e.preventDefault(); openTab(uri); }));
+const follow = (uri) => openLink(uri, openTab);
+term.registerLinkProvider(linkProvider(term, follow));
+// OSC 8 hyperlinks from programs: same rules, no confirm() dialog
+term.options.linkHandler = { activate: (e, uri) => { e.preventDefault(); follow(uri); }, allowNonHttpProtocols: true };
 term.loadAddon(new Unicode11Addon());
 term.unicode.activeVersion = "11";
 term.open($("#term"));

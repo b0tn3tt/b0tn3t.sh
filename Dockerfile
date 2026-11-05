@@ -243,7 +243,6 @@ COPY --from=rootfs /out/ /
 FROM toolchain AS xterm
 ADD --checksum=sha256:908e66e04af6c8dc6b00dd3b54de088e2e81e5ed866284fd6c2fb3c2d1c7a3f6 https://registry.npmjs.org/@xterm/xterm/-/xterm-6.0.0.tgz /pkg/xterm.tgz
 ADD --checksum=sha256:26003b4517a132b64e4ff228fd88a5fda3fff5e606c76093f6dcff772e9ecec0 https://registry.npmjs.org/@xterm/addon-fit/-/addon-fit-0.11.0.tgz /pkg/addon-fit.tgz
-ADD --checksum=sha256:bf463cfff1af4bb1903509830c62ed06bcd0589039f15ea5fba71d7bae5a86da https://registry.npmjs.org/@xterm/addon-web-links/-/addon-web-links-0.12.0.tgz /pkg/addon-web-links.tgz
 ADD --checksum=sha256:b665667792f916873fe946ba98cc98a1a742af08e163fb66e1c0809c120ca42e https://registry.npmjs.org/@xterm/addon-unicode11/-/addon-unicode11-0.9.0.tgz /pkg/addon-unicode11.tgz
 ADD --checksum=sha256:f9a290923dc9c6178446e3fc082c29812a7096a1664fd7bf904022c141c5bbfb https://registry.npmjs.org/@xterm/addon-serialize/-/addon-serialize-0.14.0.tgz /pkg/addon-serialize.tgz
 ADD --checksum=sha256:b51c9ca08dfd1b35e1f1b833334497a9a8412110569b26e03cb6e1ab7341fb61 https://registry.npmjs.org/@xterm/addon-webgl/-/addon-webgl-0.19.0.tgz /pkg/addon-webgl.tgz
@@ -251,7 +250,7 @@ RUN mkdir -p /out && cd /pkg && \
     tar -xzf xterm.tgz -O package/lib/xterm.mjs > /out/xterm.mjs && \
     tar -xzf xterm.tgz -O package/css/xterm.css > /out/xterm.css && \
     tar -xzf xterm.tgz -O package/LICENSE > /out/LICENSE && \
-    for a in fit web-links unicode11 serialize webgl; do \
+    for a in fit unicode11 serialize webgl; do \
       tar -xzf addon-$a.tgz -O package/lib/addon-$a.mjs | sed 's|//# sourceMappingURL=.*||' > /out/addon-$a.mjs; done && \
     sed -i 's|//# sourceMappingURL=.*||' /out/xterm.mjs && ls -la /out
 

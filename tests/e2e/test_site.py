@@ -83,6 +83,32 @@ def test_blog_opens_a_new_tab(page, driver):
     driver.switch_to.window(main)
 
 
+def test_contacts_are_clickable_links(page, driver):
+    """a real mouse click on each contact: https:// opens a tab, mailto:/tg: go to their app"""
+    from selenium.webdriver.common.action_chains import ActionChains
+    page.open()
+    page.js("""
+      window.__opened = [];
+      window.open = (u) => { window.__opened.push(String(u)); return {}; };
+      HTMLAnchorElement.prototype.click = function () { window.__opened.push(this.href); };""")
+    page.run("contacts; echo mailto:me@example.org tg://resolve?domain=b0tn3t")
+    want = [w for l in CONTENT["contacts"].splitlines() for w in l.split() if "://" in w]
+    want += ["mailto:me@example.org", "tg://resolve?domain=b0tn3t"]
+    el = driver.find_element(By.CSS_SELECTOR, ".xterm-screen")
+    for uri in want:
+        x, y = page.js("""
+          const t = window.vm.term, b = t.buffer.active, u = arguments[0];
+          for (let i = b.length - 1; i >= 0; i--) {
+            const s = b.getLine(i).translateToString(true), c = s.lastIndexOf(u);
+            if (c >= 0 && !s.includes("echo")) return [c + 2, i - b.viewportY];
+          }""", uri)
+        r = page.js("return arguments[0].getBoundingClientRect().toJSON()", el)
+        cw, ch = r["width"] / page.js("return window.vm.term.cols"), r["height"] / page.js("return window.vm.term.rows")
+        ox, oy = int((x + 0.5) * cw - r["width"] / 2), int((y + 0.5) * ch - r["height"] / 2)
+        ActionChains(driver).move_to_element_with_offset(el, ox, oy).pause(0.3).click().perform()
+        WebDriverWait(driver, 5).until(lambda d: uri in page.js("return window.__opened"), f"click on {uri}")
+
+
 def test_copy_paste_and_osc52(page, driver):
     page.open()
     # observe the page's clipboard calls (headless browsers keep the real clipboard to themselves)
