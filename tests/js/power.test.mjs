@@ -114,3 +114,25 @@ test("the network card is virtio-net on v86's fetch adapter, same for page and h
   assert.notEqual(netDevice(), netDevice(), "a fresh object each time (v86 may modify it)");
   assert.throws(() => { NET_DEVICE.type = "ne2k"; });
 });
+
+test("prefetch downloads the kernel once, so the reboot after it is instant", async () => {
+  const e = fakeEmulator();
+  let fetched = 0, fail = true;
+  const p = new Power(e, { kernel: async () => { fetched++; if (fail) throw new Error("offline"); return fakeBzImage(); }, cmdline: "" });
+  await assert.rejects(p.prefetch(), /offline/);
+  fail = false;
+  await Promise.all([p.prefetch(), p.prefetch()]);
+  assert.equal(fetched, 2, "a failed download is retried, a running one shared");
+  e.cpu.reboot_internal();
+  assert.equal(p.pending, undefined, "kernel already there: no stop, no fetch");
+  assert.deepEqual(e.log, []);
+  assert.equal(fetched, 2);
+});
+
+test("every kernel console line reaches onLine, without the CR", () => {
+  const e = fakeEmulator();
+  const lines = [];
+  new Power(e, { kernel: () => fakeBzImage(), cmdline: "", onLine: (l) => lines.push(l) });
+  serial(e, "The system is going down NOW!\r\nreboot: Restarting system\n[    0.000000] Linux version 6.6\n");
+  assert.deepEqual(lines, ["The system is going down NOW!", "reboot: Restarting system", "[    0.000000] Linux version 6.6"]);
+});

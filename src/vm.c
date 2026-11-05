@@ -32,6 +32,7 @@ static const char *usage_text =
 	"  save [name]         save the machine (name: extra snapshot)\n"
 	"  load [name]         restore the save or a snapshot\n"
 	"  snaps [rm <name>]   list or remove snapshots\n"
+	"  reboot              restart the machine (files are kept)\n"
 	"  reset [-y]          wipe everything and start fresh\n"
 	"  info                browser, terminal and storage info\n"
 	"  theme [name]        list or set the terminal theme\n"
@@ -343,6 +344,10 @@ int main(int argc, char **argv)
 		char a[256];
 		join(a, sizeof a, argc > 0 ? argv[0] : "", argc > 1 ? " " : "", argc > 1 ? argv[1] : "", (char *)NULL);
 		return simple("snaps", a);
+	}
+	if (!strcmp(cmd, "reboot")) { /* the page resets the machine: write files out first */
+		sync();
+		return simple("reboot", "");
 	}
 	if (!strcmp(cmd, "reset")) {
 		if (strcmp(arg, "-y")) {

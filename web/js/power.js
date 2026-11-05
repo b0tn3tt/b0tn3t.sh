@@ -69,12 +69,15 @@ export const OFF_LINE = /reboot: (Power down|System halted)/;
 export class Power {
   // kernel: () => ArrayBuffer | Promise<ArrayBuffer> (the bzImage)
   // onReboot(): the machine is starting again; onOff(how): it stopped
-  constructor(emulator, { kernel, cmdline, onReboot = () => {}, onOff = () => {} }) {
+  // onLine(text): every line on the kernel console (serial0)
+  constructor(emulator, { kernel, cmdline, onReboot = () => {}, onOff = () => {}, onLine = () => {} }) {
     this.emulator = emulator;
     this.kernel = kernel;
     this.cmdline = cmdline;
     this.onReboot = onReboot;
     this.onOff = onOff;
+    this.onLine = onLine;
+    this.fetching = null;
     this.image = null;  // cached bzImage
     this.off = false;
     this.reboots = 0;   // resets so far (guest reboots and boot())
@@ -91,8 +94,10 @@ export class Power {
     };
     emulator.add_listener("serial0-output-byte", (byte) => {
       if (byte === 10) {
-        const m = this.line.match(OFF_LINE);
+        const line = this.line.replace(/\r$/, "");
+        const m = line.match(OFF_LINE);
         this.line = "";
+        this.onLine(line);
         if (m && !this.off) this.powerOff(m[1] === "Power down" ? "poweroff" : "halt");
       } else if (this.line.length < 200) this.line += String.fromCharCode(byte);
     });
@@ -104,10 +109,18 @@ export class Power {
     cpu.jit_clear_cache();
   }
 
+  // start downloading the kernel (once); a reboot that is on its way calls this
+  prefetch() {
+    if (this.image) return Promise.resolve(this.image);
+    this.fetching ??= Promise.resolve().then(() => this.kernel()).then(
+      (b) => (this.image = b), (err) => { this.fetching = null; throw err; });
+    return this.fetching;
+  }
+
   async fetchAndBoot() {
     const e = this.emulator;
     await e.stop();
-    this.image = await this.kernel();
+    await this.prefetch();
     this.reset();
     this.load();
     await e.run();
@@ -123,7 +136,7 @@ export class Power {
   async boot() {
     const e = this.emulator;
     await e.stop();
-    if (!this.image) this.image = await this.kernel();
+    await this.prefetch();
     this.off = false;
     this.reset();
     this.load();

@@ -245,18 +245,32 @@ def test_network_through_the_page(page, server):
 
 
 def test_reboot_and_poweroff_keep_files(page):
+    """reboot, vm reboot and poweroff: the boot messages scroll by, then the
+    banner starts a clean screen; files are kept"""
     page.open()
+    page.js("""
+      const t = window.vm.term, w = t.write.bind(t);
+      window.__written = "";
+      t.write = (d, cb) => { if (typeof d === "string") window.__written += d; return w(d, cb); };""")
+    first_motd = CONTENT["motd"].splitlines()[0].rstrip()
+
+    def restarted(cmd, n):
+        page.js("window.__written = ''")
+        page.keys(cmd + "\n")
+        WebDriverWait(page.d, 60, 0.2).until(lambda d: page.js("return window.vm.power.reboots") >= n)
+        page.wait(lambda s: s.lstrip("\n").startswith(first_motd) and PROMPT.search(s), 120, f"banner on top after {cmd}")
+        log = page.js("return window.__written")
+        assert "Linux version" in log, f"{cmd}: no boot messages"
+        assert page.run("cat /root/boot.txt", timeout=60).strip() == "kept"
+
     page.run("echo kept > /root/boot.txt && sync")
-    page.keys("reboot\n")
-    WebDriverWait(page.d, 60, 0.2).until(lambda d: page.js("return window.vm.power.reboots") >= 1)
-    # busybox reboot returns at once, so the old shell may print one more
-    # prompt: wait for the motd of the new boot, then its prompt
-    page.wait(lambda s: s.count("Try: whois") >= 2 and PROMPT.search(s), 120, "prompt after reboot")
-    assert page.run("cat /root/boot.txt", timeout=60).strip() == "kept"
+    restarted("reboot", 1)
+    restarted("vm reboot", 2)
     page.keys("poweroff\n")
     page.wait(lambda s: "Press any key to start it" in s, 60, "powered off")
+    assert "The system is going down" in page.screen()
     page.keys("x")
-    page.wait(lambda s: re.search(r"starting the machine[\s\S]*root@b0tn3t:[^\n]*# *$", s), 120, "prompt after power on")
+    page.wait(lambda s: s.lstrip("\n").startswith(first_motd) and PROMPT.search(s), 120, "banner on top after power on")
     assert page.run("cat /root/boot.txt", timeout=60).strip() == "kept"
 
 

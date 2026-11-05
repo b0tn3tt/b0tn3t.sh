@@ -240,6 +240,11 @@ let emulator = null, link = null, termPump = null, linkPump = null, power = null
 let allowActive = 0; // open vm requests a snapshot may include (the `vm save` itself)
 const quiet = new Quiet({ busy: () => (termPump && termPump.queued > 0) || (linkPump && linkPump.queued > 0) || (link && link.active.size > allowActive) });
 let manifest = null, memMB = 128, booted = false, dirty = false;
+// the kernel console (serial0) is shown from the moment the system goes
+// down until the shell of the next boot speaks on hvc0
+const GOING_DOWN = /The system is going down|Requesting system|^reboot: /;
+const console0 = { show: false, fresh: false };
+
 let pending = []; // keystrokes typed before the machine is up
 const ready = {};
 ready.promise = new Promise((r) => { ready.resolve = r; });
@@ -364,7 +369,14 @@ async function boot() {
   });
   window.vm.link = link;
   emulator.add_listener("virtio-console1-output-bytes", (b) => { quiet.touch(); link.feed(new Uint8Array(b)); });
-  emulator.add_listener("virtio-console0-output-bytes", (b) => { quiet.touch(); term.write(new Uint8Array(b)); });
+  emulator.add_listener("virtio-console0-output-bytes", (b) => {
+    quiet.touch();
+    if (console0.fresh) { // first words of a new boot: the banner goes to the top of a clean screen
+      console0.fresh = console0.show = false;
+      term.write("\x1b[0m\x1b[H\x1b[2J\x1b[3J");
+    }
+    term.write(new Uint8Array(b));
+  });
 
   emulator.add_listener("emulator-loaded", async () => {
     mark("loaded");
@@ -374,10 +386,24 @@ async function boot() {
         if (!r.ok) throw new Error("image/bzImage: " + r.status);
         return r.arrayBuffer();
       },
-      cmdline: manifest.cmdline,
-      onReboot: () => { booted = false; }, // vmd says READY(0) again, then hello
+      // a reboot shows the kernel's boot messages, like a real machine
+      cmdline: manifest.cmdline.replace(/\s*\b(quiet|loglevel=\d+)\b/g, ""),
+      onLine: (line) => {
+        if (!console0.show && GOING_DOWN.test(line)) {
+          console0.show = true;
+          power.prefetch().catch(() => {}); // the kernel is needed again in a second
+          term.write("\x1b[0m\r\n");
+        }
+        if (console0.show) term.write(`\x1b[90m${line}\x1b[0m\r\n`);
+      },
+      onReboot: () => { // vmd says READY(0) again, then hello
+        booted = false;
+        console0.show = console0.fresh = true;
+        term.write("\x1b[0m\x1b[H\x1b[2J\x1b[3J");
+      },
       onOff: () => { // poweroff and halt look the same: there is no power driver
         booted = false;
+        console0.show = false;
         poweredOff = true;
         clearTimeout(autosaveTimer);
         term.write(`\r\n\x1b[90mb0tn3t.sh · the machine is off. Press any key to start it.\x1b[0m\r\n`);
@@ -523,6 +549,9 @@ async function handleRequest(req) {
       if (!list.length) return "no snapshots (vm save <name>)\n";
       return list.map((e) => `${e.key.slice(SNAP.length).padEnd(16)} ${new Date(e.created).toLocaleString()}  ${mb(e.size).padStart(9)}`).join("\n") + "\n";
     }
+    case "reboot": // the guest synced before asking; this is the reset button
+      setTimeout(() => power.boot().catch((e) => toast(`could not restart: ${e.message}`)), 300);
+      return "rebooting…\n";
     case "reset":
       await wipeEverything();
       reload("?fresh");
