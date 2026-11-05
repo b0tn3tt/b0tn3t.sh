@@ -1,0 +1,15 @@
+#!/bin/sh
+# reboot, poweroff, halt: busybox asks init to shut down and returns at
+# once; this one stays and shows progress until init stops everything.
+# init sends SIGTERM, waits a second, then SIGKILL: ignore the first.
+cmd=${0##*/}
+case $cmd in
+reboot) what=rebooting ;;
+poweroff) what="powering off" ;;
+*) cmd=halt what=halting ;;
+esac
+for a; do case $a in -h|--help|-w) exec busybox "$cmd" "$@" ;; esac; done
+trap '' TERM HUP
+printf %s. "$what"
+busybox "$cmd" "$@" || { echo; exit 1; }
+while :; do sleep 0.5; printf .; done

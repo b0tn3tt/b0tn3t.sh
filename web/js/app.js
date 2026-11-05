@@ -240,10 +240,25 @@ let emulator = null, link = null, termPump = null, linkPump = null, power = null
 let allowActive = 0; // open vm requests a snapshot may include (the `vm save` itself)
 const quiet = new Quiet({ busy: () => (termPump && termPump.queued > 0) || (linkPump && linkPump.queued > 0) || (link && link.active.size > allowActive) });
 let manifest = null, memMB = 128, booted = false, dirty = false;
-// the kernel console (serial0) is shown from the moment the system goes
-// down until the shell of the next boot speaks on hvc0
-const GOING_DOWN = /The system is going down|Requesting system|^reboot: /;
-const console0 = { show: false, fresh: false };
+// a reboot clears the screen and shows "booting" with a dot every half
+// second until the shell of the next boot speaks on hvc0. (The kernel's own
+// boot messages on the serial console would add 3 s: it boots quiet.)
+const GOING_DOWN = /The system is going down/;
+const bootDots = {
+  timer: 0,
+  start() {
+    this.stop();
+    term.write("\x1b[0m\x1b[H\x1b[2J\x1b[3J\x1b[90mbooting");
+    this.timer = setInterval(() => term.write("."), 500);
+  },
+  stop() { // true if it was running
+    if (!this.timer) return false;
+    clearInterval(this.timer);
+    this.timer = 0;
+    term.write("\x1b[0m");
+    return true;
+  },
+};
 
 let pending = []; // keystrokes typed before the machine is up
 const ready = {};
@@ -251,7 +266,7 @@ ready.promise = new Promise((r) => { ready.resolve = r; });
 
 const joiner = new SurrogateJoiner();
 function sendInput(s) {
-  if (poweredOff) { startAgain(); return; }
+  if (poweredOff) { offKey(s); return; }
   s = joiner.push(s);
   if (!s) return;
   const bytes = enc.encode(s);
@@ -318,7 +333,7 @@ async function boot() {
     saved = await store.get(MAIN).catch(() => null);
     if (saved && saved.build !== manifest.build) {
       await store.del(MAIN).catch(() => {});
-      toast("The site was updated, so this is a fresh machine. Your old one was from an older version.", null, 10000);
+      toast("site updated · new machine", null, 5000);
       saved = null;
     }
   }
@@ -371,10 +386,8 @@ async function boot() {
   emulator.add_listener("virtio-console1-output-bytes", (b) => { quiet.touch(); link.feed(new Uint8Array(b)); });
   emulator.add_listener("virtio-console0-output-bytes", (b) => {
     quiet.touch();
-    if (console0.fresh) { // first words of a new boot: the banner goes to the top of a clean screen
-      console0.fresh = console0.show = false;
-      term.write("\x1b[0m\x1b[H\x1b[2J\x1b[3J");
-    }
+    // first words of a new boot: the banner goes to the top of a clean screen
+    if (bootDots.stop()) term.write("\x1b[0m\x1b[H\x1b[2J\x1b[3J");
     term.write(new Uint8Array(b));
   });
 
@@ -386,27 +399,21 @@ async function boot() {
         if (!r.ok) throw new Error("image/bzImage: " + r.status);
         return r.arrayBuffer();
       },
-      // a reboot shows the kernel's boot messages, like a real machine
-      cmdline: manifest.cmdline.replace(/\s*\b(quiet|loglevel=\d+)\b/g, ""),
+      cmdline: manifest.cmdline,
       onLine: (line) => {
-        if (!console0.show && GOING_DOWN.test(line)) {
-          console0.show = true;
-          power.prefetch().catch(() => {}); // the kernel is needed again in a second
-          term.write("\x1b[0m\r\n");
-        }
-        if (console0.show) term.write(`\x1b[90m${line}\x1b[0m\r\n`);
+        // init announces the shutdown a second before the reset: fetch the kernel now
+        if (GOING_DOWN.test(line)) power.prefetch().catch(() => {});
       },
       onReboot: () => { // vmd says READY(0) again, then hello
         booted = false;
-        console0.show = console0.fresh = true;
-        term.write("\x1b[0m\x1b[H\x1b[2J\x1b[3J");
+        bootDots.start();
       },
       onOff: () => { // poweroff and halt look the same: there is no power driver
         booted = false;
-        console0.show = false;
+        bootDots.stop();
         poweredOff = true;
         clearTimeout(autosaveTimer);
-        term.write(`\r\n\x1b[90mb0tn3t.sh · the machine is off. Press any key to start it.\x1b[0m\r\n`);
+        setTimeout(showOff, 400); // let the last dots of `poweroff` be seen
       },
     });
     window.vm.power = power;
@@ -421,12 +428,53 @@ async function boot() {
   });
 }
 
-// after poweroff/halt: a key boots the kernel again (files are kept)
+// ------------------------------------------------------------ powered off
+// after poweroff/halt the terminal shows a small menu: start again (files
+// are kept), wipe everything, or close the page
+let offAsk = false;
+function showOff() {
+  if (!poweredOff) return;
+  offAsk = false;
+  const d = (t) => `\x1b[90m${t}\x1b[0m`, k = (t) => `\x1b[1m${t}\x1b[0m`;
+  const lines = [
+    "", "", `  ${k("●")} ${d("b0tn3t.sh is")} ${k("off")}`, "",
+    `  ${k("Enter")}  ${d("turn it on (your files are kept)")}`,
+    `  ${k("r")}      ${d("reset: wipe everything, start fresh")}`,
+    `  ${k("q")}      ${d("close the page")}`, "",
+  ];
+  term.write("\x1b[0m\x1b[H\x1b[2J\x1b[3J\x1b[?25l" + lines.join("\r\n"));
+}
+
+function offKey(s) {
+  if (offAsk) {
+    offAsk = false;
+    if (/^[yY]/.test(s)) {
+      term.write("y\r\n\r\n  " + "\x1b[90mwiping everything…\x1b[0m");
+      wipeEverything().then(() => reload("?fresh"));
+      poweredOff = false;
+    } else showOff();
+    return;
+  }
+  if (s === "\r" || s === "\n" || s === " ") startAgain();
+  else if (s === "r" || s === "R") {
+    offAsk = true;
+    term.write("\r\n  \x1b[1mWipe the machine and all your files?\x1b[0m \x1b[90m[y/N]\x1b[0m \x1b[?25h");
+  } else if (s === "q" || s === "Q") closePage();
+}
+
+function closePage() {
+  window.close(); // allowed for tabs a script opened, or with no history
+  setTimeout(() => {
+    if (window.closed) return;
+    term.write("\r\n  \x1b[90mthe browser keeps this tab open: close it with Ctrl+W (⌘W)\x1b[0m");
+  }, 300);
+}
+
 function startAgain() {
   if (!poweredOff || !power) return;
   poweredOff = false;
-  term.write("\x1b[90mb0tn3t.sh · starting the machine…\x1b[0m\r\n");
-  power.boot().catch((e) => { toast(`could not start the machine: ${e.message}`); poweredOff = true; });
+  term.write("\x1b[?25h");
+  power.boot().catch((e) => { toast(`could not start the machine: ${e.message}`); poweredOff = true; showOff(); });
 }
 
 // ------------------------------------------------------------ saving
@@ -550,8 +598,9 @@ async function handleRequest(req) {
       return list.map((e) => `${e.key.slice(SNAP.length).padEnd(16)} ${new Date(e.created).toLocaleString()}  ${mb(e.size).padStart(9)}`).join("\n") + "\n";
     }
     case "reboot": // the guest synced before asking; this is the reset button
-      setTimeout(() => power.boot().catch((e) => toast(`could not restart: ${e.message}`)), 300);
-      return "rebooting…\n";
+      // vm prints a dot every half second meanwhile, like `reboot` does
+      setTimeout(() => power.boot().catch((e) => toast(`could not restart: ${e.message}`)), 1300);
+      return "rebooting";
     case "reset":
       await wipeEverything();
       reload("?fresh");

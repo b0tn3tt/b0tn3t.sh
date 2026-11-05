@@ -54,9 +54,16 @@ URL is sent as plain HTTP to the page, which makes it HTTPS.
 
 v86 cannot boot again a machine that started from a snapshot (the kernel
 it loaded is not in memory any more), so `web/js/power.js` puts the
-bzImage back on every reset, like a boot loader. `poweroff` and `halt`
-are noticed on the kernel console; the page then offers to start the
-machine again. The root filesystem lives in the page, so files survive.
+bzImage back on every reset, like a boot loader; it starts downloading
+it as soon as init announces the shutdown. `reboot`, `poweroff` and
+`halt` are small wrappers (`userland/bin/reboot`) that print a dot every
+half second until init stops them; `vm reboot` does the same through the
+page. While the new kernel boots (quietly: its serial log would cost 3 s)
+the page shows `booting...`, then the banner on a clean screen.
+`poweroff` and `halt` are noticed on the kernel console; the page then
+shows a small menu: Enter starts the machine again, `r` wipes
+everything, `q` closes the tab (where the browser allows it). The root
+filesystem lives in the page, so files survive.
 
 ### The browser link: `vmd` and `vm`
 

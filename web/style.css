@@ -69,13 +69,15 @@ body.keys #keys { display: block; }
 .box button:hover, .box button:focus-visible { border-color: var(--fg); outline: none; }
 
 #toast {
-  position: absolute; right: 14px; bottom: 14px; max-width: min(440px, calc(100vw - 28px));
-  display: flex; gap: 12px; align-items: center; padding: 8px 12px;
+  position: absolute; right: 12px; bottom: 12px; max-width: min(340px, calc(100vw - 24px));
+  display: flex; gap: 10px; align-items: center; padding: 4px 10px;
+  font-size: 12px; box-shadow: 0 4px 14px rgb(0 0 0 / 0.3);
   opacity: 0; transform: translateY(8px); pointer-events: none;
   transition: opacity 0.15s, transform 0.15s;
   z-index: 20;
 }
-#toast.open { opacity: 1; transform: none; pointer-events: auto; }
+#toast button { padding: 2px 8px; }
+#toast.open { opacity: 0.92; transform: none; pointer-events: auto; }
 body.keys #toast { bottom: 110px; }
 
 .overlay { display: none; position: fixed; inset: 0; z-index: 30; align-items: center; justify-content: center; background: rgb(0 0 0 / 0.55); padding: 16px; }

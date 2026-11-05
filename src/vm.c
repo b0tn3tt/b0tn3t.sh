@@ -347,7 +347,13 @@ int main(int argc, char **argv)
 	}
 	if (!strcmp(cmd, "reboot")) { /* the page resets the machine: write files out first */
 		sync();
-		return simple("reboot", "");
+		int r = simple("reboot", ""); /* the page answers "rebooting" */
+		if (r)
+			return r;
+		for (;;) { /* until the page resets the machine */
+			usleep(500000);
+			write_all(1, ".", 1);
+		}
 	}
 	if (!strcmp(cmd, "reset")) {
 		if (strcmp(arg, "-y")) {
