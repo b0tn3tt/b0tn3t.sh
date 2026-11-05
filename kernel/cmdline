@@ -1,1 +1,1 @@
-console=ttyS0 root=host9p rootfstype=9p rootflags=trans=virtio,version=9p2000.L,cache=loose,msize=262144 rw init=/sbin/init quiet loglevel=3 tsc=reliable init_on_free=1 nowatchdog
+console=ttyS0 root=host9p rootfstype=9p rootflags=trans=virtio,version=9p2000.L,cache=loose,msize=262144 rw init=/sbin/init quiet loglevel=3 tsc=reliable init_on_free=1 nowatchdog ip=192.168.86.100::192.168.86.1:255.255.255.0:b0tn3t:eth0:off

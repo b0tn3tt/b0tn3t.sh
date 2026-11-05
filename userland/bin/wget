@@ -1,0 +1,10 @@
+#!/bin/sh
+# busybox wget, but https:// URLs go out as http://. The machine has no TLS
+# and its network ends in the browser: the page fetch()es every request,
+# over HTTPS when the page itself is on HTTPS.
+for a do
+  shift
+  case $a in https://*) a=http://${a#https://} ;; esac
+  set -- "$@" "$a"
+done
+exec busybox wget "$@"

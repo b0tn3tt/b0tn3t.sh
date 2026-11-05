@@ -39,6 +39,12 @@ class Quiet(http.server.SimpleHTTPRequestHandler):
     def log_message(self, *a):
         pass
 
+    def end_headers(self):
+        # the machine's network reaches this server through the page's
+        # fetch() at http://localhost:<port> (another origin than 127.0.0.1)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        super().end_headers()
+
 
 @pytest.fixture(scope="session")
 def server():

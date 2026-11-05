@@ -13,6 +13,8 @@ import { BAR, MORE, LABELS, REPEAT, keySeq, applyMods, Sticky, SurrogateJoiner }
 import { Settings, THEMES, FONTS, SYSTEM_FONT } from "./settings.js";
 import { StateStore, MAIN, SNAP, snapKey, gzip, gunzip, mb, LIMIT } from "./store.js";
 import { Quiet } from "./quiet.js";
+import { netDevice } from "./net.js";
+import { Power } from "./power.js";
 
 const $ = (s) => document.querySelector(s);
 const params = new URLSearchParams(location.search);
@@ -231,7 +233,7 @@ function pickFiles(signal) {
 }
 
 // ------------------------------------------------------------ the machine
-let emulator = null, link = null, termPump = null, linkPump = null;
+let emulator = null, link = null, termPump = null, linkPump = null, power = null, poweredOff = false;
 let allowActive = 0; // open vm requests a snapshot may include (the `vm save` itself)
 const quiet = new Quiet({ busy: () => (termPump && termPump.queued > 0) || (linkPump && linkPump.queued > 0) || (link && link.active.size > allowActive) });
 let manifest = null, memMB = 128, booted = false, dirty = false;
@@ -241,6 +243,7 @@ ready.promise = new Promise((r) => { ready.resolve = r; });
 
 const joiner = new SurrogateJoiner();
 function sendInput(s) {
+  if (poweredOff) { startAgain(); return; }
   s = joiner.push(s);
   if (!s) return;
   const bytes = enc.encode(s);
@@ -320,6 +323,7 @@ async function boot() {
     vga_memory_size: manifest.vga << 20,
     filesystem: { baseurl: "image/flat/", basefs: "image/fs.json" + v },
     virtio_console: true,
+    net_device: netDevice(),
     autostart: true,
     disable_keyboard: true,
     disable_mouse: true,
@@ -361,6 +365,22 @@ async function boot() {
 
   emulator.add_listener("emulator-loaded", async () => {
     mark("loaded");
+    power = new Power(emulator, {
+      kernel: async () => {
+        const r = await fetch("image/bzImage" + v);
+        if (!r.ok) throw new Error("image/bzImage: " + r.status);
+        return r.arrayBuffer();
+      },
+      cmdline: manifest.cmdline,
+      onReboot: () => { booted = false; }, // vmd says READY(0) again, then hello
+      onOff: () => { // poweroff and halt look the same: there is no power driver
+        booted = false;
+        poweredOff = true;
+        clearTimeout(autosaveTimer);
+        term.write(`\r\n\x1b[90mb0tn3t.sh · the machine is off. Press any key to start it.\x1b[0m\r\n`);
+      },
+    });
+    window.vm.power = power;
     term.write("\x1b[2K\r\x1b[H\x1b[2J");
     const s = await screenBytes;
     if (s) term.write(typeof s === "string" ? s : new Uint8Array(s));
@@ -370,6 +390,14 @@ async function boot() {
     if (opts.bzimage) { booted = true; ready.resolve(); return; } // vmd will say READY(0)
     sayHello(saved && saved.reply);
   });
+}
+
+// after poweroff/halt: a key boots the kernel again (files are kept)
+function startAgain() {
+  if (!poweredOff || !power) return;
+  poweredOff = false;
+  term.write("\x1b[90mb0tn3t.sh · starting the machine…\x1b[0m\r\n");
+  power.boot().catch((e) => { toast(`could not start the machine: ${e.message}`); poweredOff = true; });
 }
 
 // ------------------------------------------------------------ saving

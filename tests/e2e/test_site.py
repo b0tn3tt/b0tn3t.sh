@@ -27,7 +27,7 @@ def test_loads_fast_with_motd_and_prompt(page, browser_name):
     TIMINGS[browser_name] = {"ready_s": round(page.ready_s, 2), **t}
     print(f"\n# {browser_name}: interactive after {page.ready_s:.2f}s, page timings {t}")
     assert page.ready_s < 15
-    assert page.js("return document.title") in ("b0tn3t.sh", "~ — b0tn3t")
+    assert page.js("return document.title") in ("b0tn3t.sh", "root@b0tn3t: ~")
 
 
 def test_whois_and_contacts_are_the_repo_text(page):
@@ -65,7 +65,7 @@ def test_unicode_and_title(page, browser_name):
         page.js("window.vm.term.input(\"echo 'кот 🐱'\\r\")")
         page.wait(lambda s: "\nкот 🐱\n" in s, 10, "emoji echo")
     page.run("cd /etc")
-    WebDriverWait(page.d, 5).until(lambda d: d.title.startswith("/etc"))
+    WebDriverWait(page.d, 5).until(lambda d: d.title == "root@b0tn3t: /etc")
     page.run("cd")
 
 
@@ -207,6 +207,31 @@ def test_reset_wipes_everything(page):
     assert "No such file" in page.run("cat /root/persist.txt")
     assert page.js("return window.vm.settings.get('theme')") == "dark"
     assert page.js("return localStorage.getItem('b0tn3t.settings')") is None
+
+
+def test_network_through_the_page(page, server):
+    page.open()
+    assert re.search(r"eth0\s+UP\s+192\.168\.86\.100/24", page.run("ip -br a"))
+    origin = re.search(r"//([^/]+)/", server).group(1)
+    # v86's fetch adapter fetch()es http://<Host header><path>: here, the page's own origin
+    out = page.run(f"curl -s -H 'Host: {origin}' https://b0tn3t.test/image/manifest.json | head -c 200", timeout=60)
+    assert '"build"' in out, out
+
+
+def test_reboot_and_poweroff_keep_files(page):
+    page.open()
+    page.run("echo kept > /root/boot.txt && sync")
+    page.keys("reboot\n")
+    WebDriverWait(page.d, 60, 0.2).until(lambda d: page.js("return window.vm.power.reboots") >= 1)
+    # busybox reboot returns at once, so the old shell may print one more
+    # prompt: wait for the motd of the new boot, then its prompt
+    page.wait(lambda s: s.count("Try: whois") >= 2 and PROMPT.search(s), 120, "prompt after reboot")
+    assert page.run("cat /root/boot.txt", timeout=60).strip() == "kept"
+    page.keys("poweroff\n")
+    page.wait(lambda s: "Press any key to start it" in s, 60, "powered off")
+    page.keys("x")
+    page.wait(lambda s: re.search(r"starting the machine[\s\S]*root@b0tn3t:[^\n]*# *$", s), 120, "prompt after power on")
+    assert page.run("cat /root/boot.txt", timeout=60).strip() == "kept"
 
 
 def test_no_console_errors(page, browser_name):

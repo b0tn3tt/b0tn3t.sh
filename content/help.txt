@@ -7,7 +7,11 @@
 
   vm               talk to the browser: copy, paste, up, dl, get,
                    save, load, reset, theme, font  (vm help)
-  ls cat vi less grep find awk sed tar ...   busybox
+  ip curl wget ping nc nslookup   network (through the page: sites need CORS)
+  cc make                          C: tcc + musl, static binaries
+  htop ncdu                        processes, disk usage
+  reboot poweroff                  your files stay
+  ls cat vi less grep find awk sed tar unzip xz ...   busybox
 
   Drop files onto the page to upload them here.
   Ctrl+Shift+C / Ctrl+Shift+V copy and paste.

@@ -9,6 +9,8 @@ import { now as clockNow, atLeast } from "../web/js/clock.js"; // before libv86
 import { VmLink } from "../web/js/link.js";
 import { portPump, resizeArgs } from "../web/js/pump.js";
 import { Quiet } from "../web/js/quiet.js";
+import { netDevice } from "../web/js/net.js";
+import { Power } from "../web/js/power.js";
 
 const here = path.dirname(url.fileURLToPath(import.meta.url));
 
@@ -43,6 +45,7 @@ export async function startGuest({
     vga_memory_size: VGA << 20,
     filesystem: { baseurl: path.join(image, "flat") + "/", basefs: path.join(image, "fs.json") },
     virtio_console: true,
+    net_device: netDevice(),
     autostart: true,
     disable_keyboard: true,
     disable_mouse: true,
@@ -54,6 +57,14 @@ export async function startGuest({
   const emulator = new V86(opts);
   const g = new Guest(emulator, { onRequest, serial });
   await new Promise((resolve) => emulator.add_listener("emulator-loaded", resolve));
+  // reboot / poweroff like the page: the kernel is put back on every reset
+  const bz = kernel || path.join(image, "bzImage");
+  g.power = new Power(emulator, {
+    kernel: () => new Uint8Array(fs.readFileSync(bz)).buffer,
+    cmdline,
+    onReboot: () => { g.reboots++; g.wake(); },
+    onOff: (how) => { g.off = how; g.wake(); },
+  });
   return g;
 }
 
@@ -65,6 +76,8 @@ export class Guest {
     this.serial = "";
     this.notices = [];
     this.starts = 0;
+    this.reboots = 0;
+    this.off = null;
     const dec = new TextDecoder();
     this.quiet = new Quiet({ busy: () => this.term.queued > 0 || this.port.queued > 0 || this.link.active.size > this.allowActive });
     this.allowActive = 0;

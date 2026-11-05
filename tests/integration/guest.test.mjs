@@ -3,6 +3,7 @@
 import { test, describe, before, after } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import http from "node:http";
 import path from "node:path";
 import url from "node:url";
 import { startGuest } from "../../tools/guest.mjs";
@@ -43,8 +44,10 @@ test("image size budget", () => {
   const flat = fs.readdirSync(path.join(IMAGE, "flat")).reduce((n, f) => n + fs.statSync(path.join(IMAGE, "flat", f)).size, 0);
   assert.ok(size("bzImage") < 1.2 * MB, `kernel ${size("bzImage")}`);
   assert.ok(size("state.bin.zst") < 3 * MB, `warm state ${size("state.bin.zst")}`);
-  assert.ok(flat < 1 * MB, `rootfs files ${flat}`);
-  assert.ok(size("fs.json") < 32 * KB);
+  // everything in the rootfs, compressed; fetched per file, only when used
+  // (tcc's libc.a, htop, ncdu, ip are most of it)
+  assert.ok(flat < 4 * MB, `rootfs files ${flat}`);
+  assert.ok(size("fs.json") < 64 * KB);
   const m = JSON.parse(fs.readFileSync(path.join(IMAGE, "manifest.json")));
   assert.match(m.build, /^[0-9a-f]{12}$/);
   assert.equal(m.files["state.bin.zst"], size("state.bin.zst"));
@@ -223,6 +226,84 @@ describe("warm machine (the state the page loads)", () => {
     } finally { await g2.stop(); }
   });
 
+  test("network: eth0 has 192.168.86.100, ip is the real iproute2", async () => {
+    const br = (await g.link.exec("ip -br a")).out;
+    assert.match(br, /^lo\s+UNKNOWN\s+127\.0\.0\.1\/8/m, br);
+    assert.match(br, /^eth0\s+UP\s+192\.168\.86\.100\/24/m, br);
+    assert.match((await g.link.exec("ip route")).out, /^default via 192\.168\.86\.1 dev eth0/m);
+    assert.match((await g.link.exec("ip -V")).out, /iproute2-6\.19/);
+    assert.match((await g.link.exec("ip -c -br link")).out, /\x1b\[/, "colors");
+    assert.match((await g.link.exec("ip -j addr show eth0")).out, /"local":"192\.168\.86\.100"/);
+    const ping = await g.link.exec("ping -c 1 -W 5 192.168.86.1");
+    assert.equal(ping.code, 0, ping.out);
+    assert.match((await g.link.exec("nslookup example.com")).out, /Address:\s*192\.168\.87\.1/);
+  });
+
+  test("http from the machine goes out as fetch(): wget, curl", async () => {
+    const srv = http.createServer((req, res) => {
+      let body = "";
+      req.on("data", (c) => { body += c; });
+      req.on("end", () => {
+        if (req.url === "/404") { res.writeHead(404); res.end("nope"); return; }
+        res.writeHead(200, { "content-type": "text/plain" });
+        res.end(`${req.method} ${req.url} ${req.headers["x-test"] || "-"} ${body}\n`);
+      });
+    });
+    await new Promise((r) => srv.listen(0, r));
+    // v86's fetch adapter maps http://<port>.external/ to localhost:<port>
+    const host = `${srv.address().port}.external`;
+    try {
+      assert.equal((await g.link.exec(`wget -qO- http://${host}/hello`)).out, "GET /hello - \n");
+      assert.equal((await g.link.exec(`wget -qO- https://${host}/tls`)).out, "GET /tls - \n", "https goes as http");
+      assert.equal((await g.link.exec(`curl -s https://${host}/c -H 'X-Test: 1'`)).out, "GET /c 1 \n");
+      assert.equal((await g.link.exec(`curl -sSL -d 'a=1&b=2' ${host}/post`)).out, "POST /post - a=1&b=2\n");
+      assert.equal((await g.link.exec(`cd /tmp && curl -sO http://${host}/file.txt && cat file.txt`)).out, "GET /file.txt - \n");
+      assert.equal((await g.link.exec(`curl -so /tmp/o.txt http://${host}/o && cat /tmp/o.txt`)).out, "GET /o - \n");
+      assert.match((await g.link.exec(`curl -I http://${host}/`)).out, /HTTP\/1\.[01] 200/);
+      const e = await g.link.exec(`curl -s http://${host}/404`);
+      assert.notEqual(e.code, 0);
+      assert.match(e.out, /could not fetch/);
+    } finally { srv.close(); }
+  });
+
+  test("C in the machine: tcc with musl, make, static binaries", async () => {
+    const hello = `#include <stdio.h>\n#include <stdlib.h>\n#include <math.h>\nint main(int c, char **v) { printf("hello %d %.3f\\n", c > 1 ? atoi(v[1]) : 0, sqrt(2.0)); return 0; }\n`;
+    await g.link.exec(`mkdir -p /tmp/c && printf '%s' '${hello.replace(/'/g, "'\\''")}' > /tmp/c/hello.c`);
+    let r = await g.link.exec("cd /tmp/c && cc -o hello hello.c -lm && ./hello 3");
+    assert.equal(r.out, "hello 3 1.414\n", r.out);
+    r = await g.link.exec("cd /tmp/c && tcc -run hello.c 4");
+    assert.equal(r.out, "hello 4 1.414\n", r.out);
+    r = await g.link.exec("cd /tmp/c && printf 'all: hi\\nhi: hello.c\\n\\t$(CC) -o $@ hello.c -lm\\n' > Makefile && make && ./hi 5");
+    assert.match(r.out, /hello 5 1\.414\n$/, r.out);
+    // static: no program interpreter in the ELF header
+    r = await g.link.exec("cd /tmp/c && head -c 4096 hello | grep -c ld-musl; true");
+    assert.equal(r.out.trim(), "0");
+  });
+
+  test("htop and ncdu run, minimal static builds", async () => {
+    assert.match((await g.link.exec("htop --version")).out, /htop 3\.5\.3/);
+    assert.match((await g.link.exec("ncdu -v")).out, /ncdu 1\.22/);
+    for (const [cmd, re] of [["htop", /Tasks/], ["ncdu /etc", /ncdu 1\.22/]]) {
+      let from = g.screen.length;
+      g.type(cmd + "\n");
+      await g.waitFor(re, 30000, from);
+      await new Promise((r) => setTimeout(r, 500));
+      from = g.screen.length;
+      g.type("q");
+      await g.until(() => /root@b0tn3t:[^\n]*# $/.test(strip(g.screen.slice(from))), 15000, `prompt after ${cmd}`);
+    }
+    const sizes = (await g.link.exec("ls -l /usr/bin/htop /usr/bin/ncdu /sbin/ip /usr/bin/tcc | awk '{print $5}'")).out.split("\n").filter(Boolean).map(Number);
+    for (const n of sizes) assert.ok(n < 600 * KB, `binary ${n}`);
+  });
+
+  test("the usual tools are there", async () => {
+    const want = "ip ping nc nslookup netstat wget curl unzip bzip2 bunzip2 xz unxz cpio tar gzip ar cc tcc make htop ncdu reboot poweroff halt vi less top";
+    const r = await g.link.exec(`for c in ${want}; do command -v $c >/dev/null || echo missing $c; done`);
+    assert.equal(r.out, "");
+    const z = await g.link.exec("cd /tmp && echo zipped > z.txt && tar -cf - z.txt | bzip2 | bunzip2 | tar -tf - && echo hi | xz -dc 2>/dev/null; echo ok");
+    assert.match(z.out, /z\.txt\nok/);
+  });
+
   test("files written to the 9p root are part of the saved state", async () => {
     await g.link.exec("echo persistent > /root/keep.txt && sync");
     const state = await g.save();
@@ -235,4 +316,33 @@ describe("warm machine (the state the page loads)", () => {
       assert.equal((await g3.link.exec("cat /root/keep.txt")).out, "persistent\n");
     } finally { await g3.stop(); }
   });
+});
+
+test("reboot boots the kernel again and keeps the files; poweroff stops, boot() starts", async () => {
+  const g = await startGuest({ image: IMAGE, state: path.join(IMAGE, "state.bin.zst"), onRequest });
+  try {
+    await g.link.hello({ time: Date.now() }, { timeout: 20000 });
+    await g.link.exec("echo survives > /root/reboot.txt && sync");
+    for (const [how, cmd] of [["reboot", "reboot"], ["poweroff", "poweroff"]]) {
+      const starts = g.starts, from = g.screen.length;
+      const t = Date.now();
+      g.type(cmd + "\n");
+      if (how === "poweroff") {
+        await g.until(() => g.off, 60000, "power off");
+        // no power driver: Linux turns poweroff into halt itself
+        assert.match(g.off, /^(poweroff|halt)$/);
+        assert.match(g.serial, /reboot: (Power down|System halted)/);
+        g.off = null;
+        await g.power.boot();
+      }
+      await g.until(() => g.starts > starts, 120000, `vmd READY after ${how}`);
+      await g.link.hello({ time: Date.now() }, { timeout: 20000 });
+      await g.until(() => /root@b0tn3t:~# $/.test(strip(g.screen.slice(from))), 60000, `prompt after ${how}`);
+      console.log(`# ${how} to prompt: ${Date.now() - t} ms`);
+      assert.equal((await g.link.exec("cat /root/reboot.txt")).out, "survives\n", `files kept over ${how}`);
+      assert.match((await g.link.exec("ip -br a show eth0")).out, /192\.168\.86\.100/);
+    }
+    assert.ok(g.reboots >= 2);
+    assert.doesNotMatch(g.serial, /panic|Oops|BUG:/);
+  } finally { await g.stop(); }
 });

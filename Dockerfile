@@ -25,6 +25,19 @@ ARG BUSYBOX_VERSION=1.37.0
 ARG BUSYBOX_SHA256=3311dff32e746499f4df0d5df04d7eb396382d7e108bb9250e7b519b837043a4
 ARG MICROPYTHON_VERSION=1.29.0
 ARG MICROPYTHON_SHA256=d925a7c664e79a2bdf3dfcb285ba5e2237041cc35a0bd4ee573b6c5711efeca0
+ARG IPROUTE2_VERSION=6.19.0
+ARG IPROUTE2_SHA256=9332213d35480b647086a70c302de8568de83455a98774d35de216c4ce191006
+ARG NCURSES_VERSION=6.5
+ARG NCURSES_SHA256=136d91bc269a9a5785e5f9e980bc76ab57428f604ce3e5a5a90cebc767971cc6
+ARG HTOP_VERSION=3.5.3
+ARG HTOP_SHA256=a8b164386494cb85bb255a415a3f5f80afe7a0c4491da5d113b3a0f951087e65
+ARG NCDU_VERSION=1.22
+ARG NCDU_SHA256=0ad6c096dc04d5120581104760c01b8f4e97d4191d6c9ef79654fa3c691a176b
+# tinycc has had no release since 0.9.27 (2017, no musl); a pinned mob commit
+ARG TCC_COMMIT=2ba12e83b3599ca8f5d50c179fe5138fe956f0c9
+ARG TCC_SHA256=4eb5f0266d4d9deabe9650abedc3f0261dc06295f89ad798bb495abf680dc074
+ARG PDPMAKE_VERSION=2.0.4
+ARG PDPMAKE_SHA256=7e19294d54edf360591d76d3b7a0a511864902ac3a75a0b5b11c7b3cae14c13f
 
 # ---------------------------------------------------------------- toolchain
 FROM --platform=linux/386 ${I386_ALPINE} AS toolchain
@@ -106,6 +119,74 @@ RUN --mount=type=cache,target=/ccache,id=ccache-i386,sharing=locked \
       LDFLAGS_EXTRA="-static -Wl,--gc-sections -Wl,--build-id=none" && \
     mkdir -p /out && strip -o /out/micropython ports/unix/build-standard/micropython && ls -la /out
 
+# ---------------------------------------------------------------- iproute2
+# the real `ip` (colors, -br, -j, every object); only lib/ and ip/ are built
+FROM toolchain AS iproute2
+ARG IPROUTE2_VERSION IPROUTE2_SHA256 JOBS=3
+ADD --checksum=sha256:${IPROUTE2_SHA256} https://mirrors.edge.kernel.org/pub/linux/utils/net/iproute2/iproute2-${IPROUTE2_VERSION}.tar.xz /tmp/ipr.tar.xz
+RUN mkdir -p /src /out && tar -xJf /tmp/ipr.tar.xz -C /src && cd /src/iproute2-${IPROUTE2_VERSION} && \
+    ./configure >/dev/null && \
+    nice -n 19 make -s -j${JOBS} CCOPTS="$CFLAGS" LDFLAGS="$LDFLAGS" SUBDIRS="lib ip" 2>&1 | grep -v 'warning\|^ *CC\|^ *LINK\|^ *AR' || true; \
+    cp ip/ip /out/ip && ls -la /out
+
+# ---------------------------------------------------------------- ncurses, htop, ncdu
+# A small static ncursesw: -Os with gc-sections (Alpine's ncurses-static is
+# neither) and no terminfo database at all: xterm-256color, xterm, vt100
+# and linux are compiled in, so nothing is read from disk.
+FROM toolchain AS ncurses
+ARG NCURSES_VERSION NCURSES_SHA256 JOBS=3
+RUN --mount=type=cache,target=/etc/apk/cache,id=apk-i386,sharing=locked \
+    apk add ncurses=6.5_p20241006-r3 ncurses-terminfo-base=6.5_p20241006-r3 pkgconf=2.3.0-r0
+ADD --checksum=sha256:${NCURSES_SHA256} https://ftp.gnu.org/gnu/ncurses/ncurses-${NCURSES_VERSION}.tar.gz /tmp/nc.tar.gz
+RUN mkdir -p /src && tar -xzf /tmp/nc.tar.gz -C /src && cd /src/ncurses-${NCURSES_VERSION} && \
+    ./configure -q --prefix=/opt/nc --without-cxx --without-cxx-binding --without-ada --without-progs \
+      --without-tests --without-manpages --enable-widec --disable-database \
+      --with-fallbacks=xterm-256color,xterm,vt100,linux --without-shared --with-normal --without-debug \
+      --without-profile --disable-home-terminfo --without-gpm --without-dlsym --disable-termcap \
+      --without-trace --disable-leaks --enable-pc-files --with-pkg-config-libdir=/opt/nc/lib/pkgconfig --disable-stripping >/dev/null 2>&1 && \
+    nice -n 19 make -s -j${JOBS} >/dev/null 2>&1 && make -s install >/dev/null 2>&1 && ls /opt/nc/lib
+ENV NC_CPPFLAGS="-I/opt/nc/include/ncursesw -I/opt/nc/include" NC_LDFLAGS="-L/opt/nc/lib" PKG_CONFIG_PATH=/opt/nc/lib/pkgconfig
+
+FROM ncurses AS htop
+ARG HTOP_VERSION HTOP_SHA256 JOBS=3
+ADD --checksum=sha256:${HTOP_SHA256} https://github.com/htop-dev/htop/releases/download/${HTOP_VERSION}/htop-${HTOP_VERSION}.tar.xz /tmp/htop.tar.xz
+RUN mkdir -p /src /out && tar -xJf /tmp/htop.tar.xz -C /src && cd /src/htop-${HTOP_VERSION} && \
+    CPPFLAGS="$NC_CPPFLAGS" LDFLAGS="$LDFLAGS $NC_LDFLAGS" LIBS=-lncursesw ./configure -q --enable-static \
+      --disable-hwloc --disable-sensors --disable-capabilities --disable-delayacct --disable-affinity && \
+    nice -n 19 make -s -j${JOBS} 2>&1 | grep -v warning || true; cp htop /out/ && ls -la /out
+
+FROM ncurses AS ncdu
+ARG NCDU_VERSION NCDU_SHA256 JOBS=3
+ADD --checksum=sha256:${NCDU_SHA256} https://dev.yorhel.nl/download/ncdu-${NCDU_VERSION}.tar.gz /tmp/ncdu.tar.gz
+RUN mkdir -p /src /out && tar -xzf /tmp/ncdu.tar.gz -C /src && cd /src/ncdu-${NCDU_VERSION} && \
+    CPPFLAGS="$NC_CPPFLAGS" LDFLAGS="$LDFLAGS $NC_LDFLAGS" ./configure -q --with-ncursesw && \
+    nice -n 19 make -s -j${JOBS} && cp ncdu /out/ && ls -la /out
+
+# ---------------------------------------------------------------- C in the machine
+# tcc with musl's headers and libc.a, and pdpmake as `make`. There is no
+# dynamic loader in the machine, so tcc links statically by default.
+FROM toolchain AS cdev
+ARG TCC_COMMIT TCC_SHA256 PDPMAKE_VERSION PDPMAKE_SHA256 JOBS=3
+ADD --checksum=sha256:${TCC_SHA256} https://github.com/TinyCC/tinycc/archive/${TCC_COMMIT}.tar.gz /tmp/tcc.tar.gz
+ADD --checksum=sha256:${PDPMAKE_SHA256} https://github.com/rmyorston/pdpmake/archive/refs/tags/${PDPMAKE_VERSION}.tar.gz /tmp/pdpmake.tar.gz
+RUN mkdir -p /src /out/usr/bin && tar -xzf /tmp/tcc.tar.gz -C /src && cd /src/tinycc-${TCC_COMMIT} && \
+    sed -i '/^LIBTCCAPI TCCState \*tcc_new(void)/,/^}/ s/^\(\s*\)s->gnu_ext = 1;/&\n\1s->static_link = 1; \/* b0tn3t: no dynamic loader *\//' libtcc.c && \
+    grep -q 'b0tn3t: no dynamic loader' libtcc.c && \
+    ./configure --prefix=/usr --cpu=i386 --config-musl --triplet= --crtprefix=/usr/lib \
+      --libpaths=/usr/lib/tcc:/usr/lib --extra-cflags="$CFLAGS" --extra-ldflags="$LDFLAGS" >/dev/null && \
+    nice -n 19 make -s -j${JOBS} >/dev/null 2>&1 && make -s DESTDIR=/out install >/dev/null 2>&1 && \
+    rm -rf /out/usr/share /out/usr/include /out/usr/lib/libtcc.a /out/usr/lib/tcc/bcheck.o && \
+    # musl's libc.a was built by gcc and calls two libgcc helpers tcc lacks
+    cd /tmp && ar x "$(gcc -print-libgcc-file-name)" _divmoddi4.o _udivmoddi4.o && \
+    ar rcsD /out/usr/lib/tcc/libtcc1.a _divmoddi4.o _udivmoddi4.o && \
+    # musl-dev: headers, crt objects and static libraries (no libc.so: no loader)
+    apk info -qL musl-dev | grep -v -e 'libc\.so$' -e 'crt1\.o$' -e '^$' | tar -C / -cf - -T - | tar -C /out -xf - && \
+    cp /usr/lib/crt1.o /out/usr/lib/ && strip --strip-debug /out/usr/lib/*.a && \
+    ln -s tcc /out/usr/bin/cc && ln -s tcc /out/usr/bin/c99 && \
+    mkdir -p /src/pdpmake && tar -xzf /tmp/pdpmake.tar.gz -C /src/pdpmake --strip-components=1 && cd /src/pdpmake && \
+    nice -n 19 make -s CFLAGS="$CFLAGS" LDFLAGS="$LDFLAGS" && cp make /out/usr/bin/make && \
+    find /out -exec touch -h -d @${SOURCE_DATE_EPOCH} {} + && du -sh /out && find /out -type f | xargs ls -la | sort -k5 -n | tail -6
+
 # ---------------------------------------------------------------- our tools
 FROM toolchain AS tools
 COPY src/ /src/
@@ -131,11 +212,19 @@ COPY --from=busybox /out/ /rootfs/
 COPY --from=micropython /out/micropython /rootfs/usr/bin/micropython
 COPY --from=tools /out/vmd /rootfs/sbin/vmd
 COPY --from=tools /out/vm /out/fetch /rootfs/usr/bin/
+COPY --from=iproute2 /out/ip /rootfs/sbin/ip
+COPY --from=htop /out/htop /rootfs/usr/bin/htop
+COPY --from=ncdu /out/ncdu /rootfs/usr/bin/ncdu
+COPY --from=cdev /out/ /rootfs/
 COPY rootfs/ /rootfs/
 COPY content/ /content/
 COPY userland/gen-commands.sh userland/mkfs9p.py /build/
+COPY userland/bin/ /build/bin/
 RUN --mount=type=cache,target=/zcache,id=rootfs-zst \
     cd /rootfs && \
+    # curl and wget: shell wrappers that send everything over plain HTTP
+    # (the page's fetch() does the HTTPS), replacing busybox's wget link
+    for f in /build/bin/*; do rm -f usr/bin/${f##*/}; install -m 755 $f usr/bin/; done && \
     mkdir -p dev proc sys run tmp root mnt usr/local/bin && \
     for n in python python3; do ln -sf micropython usr/bin/$n; done && \
     for n in neofetch fastfetch screenfetch pfetch; do ln -sf fetch usr/bin/$n; done && \

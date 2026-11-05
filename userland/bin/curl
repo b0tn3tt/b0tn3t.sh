@@ -1,0 +1,54 @@
+#!/bin/sh
+# A small curl on top of busybox wget, for the usual one-liners:
+#   curl [-sSLkfvI] [-o file | -O] [-H hdr] [-A agent] [-d data] [-m secs] url
+# Requests leave the machine through the browser's fetch(), so a site has
+# to allow cross-origin requests (CORS) for its answer to reach us.
+usage() { sed -n '2,5s/^# \{0,1\}//p' "$0"; exit "${1:-2}"; }
+q() { printf "'%s' " "$(printf %s "$1" | sed "s/'/'\\\\''/g")"; }
+out=- head=0 args= url= verbose=0
+need() { [ -n "$2" ] || { echo "curl: option $1 needs an argument" >&2; exit 2; }; }
+while [ $# -gt 0 ]; do
+  a=$1; shift
+  case $a in
+    -o|--output) need "$a" "$1"; out=$1; shift ;;
+    -O|--remote-name) out= ;;
+    -H|--header) need "$a" "$1"; args="$args--header $(q "$1")"; shift ;;
+    -A|--user-agent) need "$a" "$1"; args="$args-U $(q "$1")"; shift ;;
+    -d|--data|--data-raw|--data-binary|--data-ascii) need "$a" "$1"; args="$args--post-data $(q "$1")"; shift ;;
+    -m|--max-time|--connect-timeout) need "$a" "$1"; args="$args-T $(q "${1%%.*}")"; shift ;;
+    -X|--request|-e|--referer|-u|--user|-w|--write-out|-b|--cookie|-c|--cookie-jar) shift ;;
+    -I|--head) head=1 ;;
+    -v|--verbose) verbose=1 ;;
+    -h|--help) usage 0 ;;
+    --) [ $# -gt 0 ] && { url=$1; shift; } ;;
+    --*) ;;
+    -?*)
+      flags=${a#-}
+      while [ -n "$flags" ]; do
+        c=${flags%"${flags#?}"}; flags=${flags#?}
+        case $c in
+          I) head=1 ;; v) verbose=1 ;; O) out= ;; s|S|L|k|f|i|'#'|g|N|q|4|6) ;;
+          o|H|A|d|m|X|e|u|w|b|c) set -- "-$c" ${flags:+"$flags"} "$@"; flags= ;;
+          *) echo "curl: unknown option -$c" >&2; usage ;;
+        esac
+      done ;;
+    *) url=$a ;;
+  esac
+done
+[ -n "$url" ] || usage
+case $url in
+  https://*) url=http://${url#https://} ;;
+  http://*) ;;
+  *://*) echo "curl: only http(s) URLs work here" >&2; exit 1 ;;
+  *) url=http://$url ;;
+esac
+if [ $head = 1 ]; then
+  eval "busybox wget -q -S --spider $args $(q "$url")" 2>&1 | sed 's/^  //'
+  exit 0
+fi
+[ $verbose = 1 ] && quiet= || quiet=-q
+if [ -z "$out" ]; then eval "busybox wget $quiet $args $(q "$url")"
+else eval "busybox wget $quiet -O $(q "$out") $args $(q "$url")"; fi
+rc=$?
+[ $rc = 0 ] || echo "curl: could not fetch $url (the site may not allow requests from other sites, CORS)" >&2
+exit $rc

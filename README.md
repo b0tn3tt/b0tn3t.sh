@@ -6,6 +6,7 @@ featured terminal and a link between the machine and the page.
 
 ```
 whois · contacts · blog · fetch · python · help · vm
+ip · curl · wget · cc · make · htop · ncdu · reboot
 ```
 
 ## Editing the texts
@@ -25,15 +26,37 @@ program to start, no file to read), plus `/usr/bin/<name>` for scripts.
 
 | part | size | |
 |---|---|---|
-| Linux 6.6 LTS kernel | 1.0 MB | `kernel/b0tn3t.config` on top of `tinyconfig`: one i686 CPU, PCI virtio console + 9p, no modules, no block layer, no IP stack |
-| busybox 1.37 (static, musl) | 0.5 MB | shell with history, Ctrl-R, tab completion, colors, UTF-8; `userland/busybox.config` |
+| Linux 6.6 LTS kernel | 1.2 MB | `kernel/b0tn3t.config` on top of `tinyconfig`: one i686 CPU, PCI virtio console, 9p and net, IPv4 only, no modules, no block layer |
+| busybox 1.37 (static, musl) | 0.6 MB | shell with history, Ctrl-R, tab completion, colors, UTF-8, wget, nc, ping, archives; `userland/busybox.config` |
 | MicroPython 1.29 | 0.4 MB | `python`, `python3`, `py` |
+| iproute2 6.19 `ip` | 0.5 MB | the real one: `ip -br -c a`, `-j`, every object |
+| tcc + musl + pdpmake | 0.3 MB + libc | `cc`, `tcc -run`, `make`; links static (there is no dynamic loader) |
+| htop 3.5, ncdu 1.22 | 0.45/0.3 MB | on a small ncursesw (`-Os`, gc-sections, terminfo compiled in) |
 | `vmd`, `vm`, `fetch` | 46/25/21 KB | `src/`, C without stdio |
 | warm machine state | 1.9 MB | booted, page cache warm, motd on screen |
 
 The root filesystem is served over 9p and fetched **per file, on first
 use** (`image/flat/<sha256>.bin.zst`). The page restores a machine that was
 booted and warmed at build time, so it answers in about half a second.
+
+### Network
+
+The machine has a virtio network card whose other end is v86's fetch
+adapter in the page (`web/js/net.js`). The kernel configures
+`eth0 192.168.86.100/24` from its command line (`ip=`), the adapter plays
+the router and DNS at `192.168.86.1`, and every HTTP request becomes a
+`fetch()` by the page (HTTPS when the page is on HTTPS). So `curl` and
+`wget` (small wrappers, `userland/bin/`) reach sites that allow
+cross-origin requests; there is no TLS inside the machine, an `https://`
+URL is sent as plain HTTP to the page, which makes it HTTPS.
+
+### reboot and poweroff
+
+v86 cannot boot again a machine that started from a snapshot (the kernel
+it loaded is not in memory any more), so `web/js/power.js` puts the
+bzImage back on every reset, like a boot loader. `poweroff` and `halt`
+are noticed on the kernel console; the page then offers to start the
+machine again. The root filesystem lives in the page, so files survive.
 
 ### The browser link: `vmd` and `vm`
 
@@ -99,15 +122,16 @@ make serve      # http://localhost:8000
 |---|---|---|
 | C unit | `tests/c/test_*.c` | framing, TZif (checked through libc), names, procfs, helpers; ASan/UBSan |
 | C round trip | `tests/c/vmd_roundtrip.py` | real `vmd` + `vm` on i386 musl, this script as the browser |
-| JS unit | `tests/js/` | protocol, flow control, time zones, keys, settings, storage, link, clock |
-| integration | `tests/integration/` | the built image in v86 under Node through the page's own link code |
-| e2e | `tests/e2e/` | Selenium, Firefox and Chromium: typing, blog tab, clipboard, up/dl, drag & drop, save/reload, autosave, snapshots, reset, mobile key bar |
+| JS unit | `tests/js/` | protocol, flow control, time zones, keys, settings, storage, link, clock, kernel loader and power |
+| integration | `tests/integration/` | the built image in v86 under Node through the page's own link code: network (`ip`, `wget`, `curl` against a local server), C, htop/ncdu, reboot/poweroff |
+| e2e | `tests/e2e/` | Selenium, Firefox and Chromium: typing, blog tab, clipboard, up/dl, drag & drop, save/reload, autosave, snapshots, reset, network, reboot/poweroff, mobile key bar |
 
 ## Notes on v86
 
-Three v86 behaviours are worked around in `web/js/` and documented there:
+Four v86 behaviours are worked around in `web/js/` and documented there:
 the virtio console resize message swaps rows and columns (`pump.js`),
-input is dropped when the guest has no free buffer (`pump.js`), and saved
-states hold absolute `performance.now()` readings (`clock.js`). Snapshots
+input is dropped when the guest has no free buffer (`pump.js`), saved
+states hold absolute `performance.now()` readings (`clock.js`), and a
+reboot after a restored state has no kernel to boot (`power.js`). Snapshots
 are only taken at quiet moments (`quiet.js`) and, for autosave, while the
 shell waits at its prompt.
