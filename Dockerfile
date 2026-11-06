@@ -283,7 +283,7 @@ RUN nice -n 19 zstd -19 -q -T2 --rm /image/state.bin -o /image/state.bin.zst && 
 # loads code or styles (index.html, imports): a browser never mixes a
 # cached old module with a new one, and needs no reload after an update.
 FROM toolchain AS web
-COPY web/index.html web/style.css /w/
+COPY web/index.html web/style.css web/icons/ /w/
 COPY web/js/ /w/js/
 COPY --from=xterm /out/ /w/vendor/xterm/
 COPY vendor/libv86.mjs vendor/v86.wasm vendor/seabios.bin vendor/vgabios.bin /w/vendor/v86/
@@ -294,7 +294,6 @@ RUN cd /w && v=$(find . -type f | LC_ALL=C sort | xargs cat | sha256sum | cut -c
 
 FROM scratch AS site
 COPY --from=web /w/ /
-COPY cat_paw_loading.gif /favicon.gif
 COPY --from=image /image/ /image/
 
 # ---------------------------------------------------------------- reproducibility

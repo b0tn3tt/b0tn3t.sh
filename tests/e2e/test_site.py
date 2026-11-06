@@ -289,7 +289,7 @@ def test_no_console_errors(page, browser_name):
     if browser_name != "chromium":
         pytest.skip("only chromium exposes the console log")
     page.open()
-    errors = [l for l in page.d.get_log("browser") if l["level"] == "SEVERE" and "favicon" not in l["message"]]
+    errors = [l for l in page.d.get_log("browser") if l["level"] == "SEVERE"]
     assert errors == [], errors
 
 
