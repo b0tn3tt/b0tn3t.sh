@@ -99,8 +99,10 @@ def test_contacts_are_clickable_links(page, driver):
         x, y = page.js("""
           const t = window.vm.term, b = t.buffer.active, u = arguments[0];
           for (let i = b.length - 1; i >= 0; i--) {
-            const s = b.getLine(i).translateToString(true), c = s.lastIndexOf(u);
-            if (c >= 0 && !s.includes("echo")) return [c + 2, i - b.viewportY];
+            const s = b.getLine(i).translateToString(true);
+            if (s.includes("echo")) continue;
+            let c = 0; // the whole word, so t.me/b0tn3t is not found inside t.me/b0tn3t_sh
+            for (const w of s.split(" ")) { if (w === u) return [c + 2, i - b.viewportY]; c += w.length + 1; }
           }""", uri)
         r = page.js("return arguments[0].getBoundingClientRect().toJSON()", el)
         cw, ch = r["width"] / page.js("return window.vm.term.cols"), r["height"] / page.js("return window.vm.term.rows")
