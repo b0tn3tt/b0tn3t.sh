@@ -19,11 +19,11 @@ function mono(hex, bg = "#050805") {
 }
 
 export const THEMES = {
-  // the default: black and red
+  // the default: black with red accents, plain text in light gray
   red: {
-    background: "#080000", foreground: "#ff5c5c", cursor: "#ff1a1a", cursorAccent: "#080000", selectionBackground: "#5c0d0d",
-    black: "#1a0505", red: "#ff2a2a", green: "#ff4d4d", yellow: "#ff8c66", blue: "#d42a2a", magenta: "#ff3d77", cyan: "#ff7a7a", white: "#e8b4b4",
-    brightBlack: "#a33a3a", brightRed: "#ff4040", brightGreen: "#ff2a2a", brightYellow: "#ffa385", brightBlue: "#ff6666", brightMagenta: "#ff5c8f", brightCyan: "#ff9999", brightWhite: "#ffe5e5",
+    background: "#080000", foreground: "#e2e2e2", cursor: "#ff2a2a", cursorAccent: "#080000", selectionBackground: "#5c0d0d",
+    black: "#1a0505", red: "#ff3b3b", green: "#ff5c5c", yellow: "#ff9a7a", blue: "#e04848", magenta: "#ff5c8f", cyan: "#ff8a8a", white: "#c8c8c8",
+    brightBlack: "#8a8a8a", brightRed: "#ff5555", brightGreen: "#ff3b3b", brightYellow: "#ffb199", brightBlue: "#ff6b6b", brightMagenta: "#ff7aa5", brightCyan: "#ffa3a3", brightWhite: "#ffffff",
   },
   dark: { ...base, background: "#0d1117", foreground: "#d7dae0", cursor: "#5af78e", cursorAccent: "#0d1117", selectionBackground: "#2f3b4d" },
   light: {

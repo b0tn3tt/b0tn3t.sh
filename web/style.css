@@ -1,6 +1,6 @@
 :root {
   --bg: #080000;
-  --fg: #ff5c5c;
+  --fg: #e2e2e2;
   --line: color-mix(in srgb, var(--fg) 18%, transparent);
   --muted: color-mix(in srgb, var(--fg) 60%, transparent);
   --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
@@ -44,7 +44,7 @@ html, body {
     radial-gradient(ellipse at center, transparent 60%, rgb(0 0 0 / 0.45) 100%);
 }
 @media (hover: hover) {
-  [data-theme="red"] #term .xterm-screen { filter: drop-shadow(0 0 2px rgb(255 20 20 / 0.45)); }
+  [data-theme="red"] #term .xterm-screen { filter: drop-shadow(0 0 2px rgb(255 40 40 / 0.25)); }
 }
 [data-theme="red"] .box { border-color: #5c0d0d; box-shadow: 0 0 18px rgb(255 0 0 / 0.18); }
 #term .xterm-viewport { background: var(--bg) !important; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
