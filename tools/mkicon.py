@@ -1,17 +1,30 @@
-"""Favicons from braille art:
-python3 tools/mkicon.py tools/favicon.txt web/icons  ->  favicon.svg,
-favicon-32.png, apple-touch-icon.png, favicon.ico: every dot of the art
-in red on a dark rounded square."""
+"""Favicons from the braille cat (tools/cat.txt, also fetch's logo):
+python3 tools/mkicon.py tools web/icons  ->  favicon.svg, favicon-32.png,
+apple-touch-icon.png, favicon.ico: the cat's dots in red on a dark rounded square."""
 import sys
 from PIL import Image
-art, outdir = sys.argv[1], sys.argv[2]
-L=[l.replace("\u2800", " ") for l in open(art).read().rstrip("\n").split("\n")]
+S, outdir = sys.argv[1], sys.argv[2]
+L=[l.replace("⠀"," ") for l in open(S+"/cat.txt").read().rstrip("\n").split("\n")]
 W=max(len(l) for l in L); L=[l.ljust(W) for l in L]; H=len(L)
+# the cat's cells only (largest 4-connected group), as in fetch
+comp=[[None]*W for _ in range(H)]; sizes=[]
+for y in range(H):
+  for x in range(W):
+    if L[y][x]!=" " and comp[y][x] is None:
+      k=len(sizes); st=[(y,x)]; comp[y][x]=k; n=0
+      while st:
+        cy,cx=st.pop(); n+=1
+        for dy,dx in ((0,1),(0,-1),(1,0),(-1,0)):
+          ny,nx=cy+dy,cx+dx
+          if 0<=ny<H and 0<=nx<W and L[ny][nx]!=" " and comp[ny][nx] is None:
+            comp[ny][nx]=k; st.append((ny,nx))
+      sizes.append(n)
+big=sizes.index(max(sizes))
 BITS=[(0,0),(0,1),(0,2),(1,0),(1,1),(1,2),(0,3),(1,3)]
 dots=set()
 for y in range(H):
   for x in range(W):
-    if L[y][x]!=" ":
+    if comp[y][x]==big:
       b=ord(L[y][x])-0x2800
       for i,(dx,dy) in enumerate(BITS):
         if b>>i&1: dots.add((2*x+dx,4*y+dy))
@@ -31,17 +44,14 @@ for y in range(y0,y1):
     else: x+=1
 svg=(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {side} {side}">'
      f'<rect width="{side}" height="{side}" rx="{side//6}" fill="#080000"/>'
-     f'<path fill="#ff3b3b" stroke="#ff3b3b" stroke-width="1.2" stroke-linejoin="round" d="{"".join(runs)}"/></svg>\n')
+     f'<path fill="#ff3b3b" d="{"".join(runs)}"/></svg>\n')
 open(outdir+"/favicon.svg","w").write(svg)
 # png fallbacks
 img=Image.new("RGBA",(side,side),(0,0,0,0))
 from PIL import ImageDraw
 d=ImageDraw.Draw(img); d.rounded_rectangle([0,0,side-1,side-1],radius=side//6,fill=(8,0,0,255))
 for (x,y) in dots: img.putpixel((x+ox,y+oy),(255,59,59,255))
-from PIL import ImageFilter
-# thin one-dot lines vanish when shrunk: thicken them for the small sizes
-bold=img.filter(ImageFilter.MaxFilter(3))
 for n in (32,180):
-  (bold if n < 64 else img).resize((n,n),Image.LANCZOS).save(outdir+f"/favicon-{n}.png" if n==32 else outdir+"/apple-touch-icon.png", optimize=True)
-bold.resize((32,32),Image.LANCZOS).save(outdir+"/favicon.ico", sizes=[(16,16),(32,32)])  # for /favicon.ico requests
+  img.resize((n,n),Image.LANCZOS).save(outdir+f"/favicon-{n}.png" if n==32 else outdir+"/apple-touch-icon.png", optimize=True)
+img.resize((32,32),Image.LANCZOS).save(outdir+"/favicon.ico", sizes=[(16,16),(32,32)])  # for /favicon.ico requests
 print(side, len(svg))
