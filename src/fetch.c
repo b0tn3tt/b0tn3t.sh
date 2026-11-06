@@ -159,7 +159,7 @@ int main(int argc, char **argv)
 	if (!field("/etc/os-release", "PRETTY_NAME", '=', v, sizeof v))
 		strcpy(v, "Linux");
 	line("OS", v, " ", u.machine);
-	line("Host", "v86 (x86 in WebAssembly)", NULL, NULL);
+	line("Host", "b0tn3t.sh (x86 on WebAssembly)", NULL, NULL);
 	line("Kernel", u.release, NULL, NULL);
 	uptime(v);
 	line("Uptime", v, NULL, NULL);

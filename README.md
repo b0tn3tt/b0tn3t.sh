@@ -1,6 +1,6 @@
 # b0tn3t.sh
 
-A tiny Linux machine that runs in the browser: **b0tn3t LFS**, built from
+A tiny Linux machine that runs in the browser: **b0tn3tOS LFS**, built from
 source for the [v86](https://github.com/copy/v86) emulator, with a full
 featured terminal and a link between the machine and the page.
 

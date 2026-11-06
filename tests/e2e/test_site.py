@@ -39,7 +39,7 @@ def test_whois_and_contacts_are_the_repo_text(page):
 def test_fetch_and_python(page, browser_name):
     page.open()
     out = page.run("fetch")
-    assert "b0tn3t LFS 1.0" in out and "Kernel" in out
+    assert "b0tn3tOS LFS 1.0" in out and "b0tn3t.sh (x86 on WebAssembly)" in out and "Kernel" in out
     assert ("Firefox" if browser_name == "firefox" else "Chrome") in out
     cols, rows = page.js("return [window.vm.term.cols, window.vm.term.rows]")
     assert f"xterm.js {cols}x{rows}" in out

@@ -102,14 +102,14 @@ describe("warm machine (the state the page loads)", () => {
 
   test("fetch and its aliases", async () => {
     const out = strip(await g.run("fetch"));
-    assert.match(out, /OS\s+b0tn3t LFS 1\.0 i686/);
+    assert.match(out, /OS\s+b0tn3tOS LFS 1\.0 i686/);
     assert.match(out, /Kernel\s+6\.6\./);
     assert.match(out, /Terminal\s+xterm\.js 120x40/);
     assert.match(out, /Browser\s+node test/);
     assert.match(out, /Timezone\s+Europe\/Berlin/);
     for (const alias of ["neofetch", "fastfetch", "screenfetch", "pfetch"]) {
       const r = await g.link.exec(`${alias} --plain`);
-      assert.match(r.out, /b0tn3t LFS/, alias);
+      assert.match(r.out, /b0tn3tOS LFS/, alias);
     }
     const size = await g.link.exec("ls -l /usr/bin/fetch | awk '{print $5}'");
     assert.ok(+size.out < 32 * KB, "fetch stays tiny: " + size.out);
