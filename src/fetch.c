@@ -11,21 +11,30 @@
 #define C(n) "\033[" #n "m"
 #define RST "\033[0m"
 
-/* a kaomoji cat, eyes closed, with a heart, behind a laptop:
- *   ∧___∧
- *  (=-ω-=)  */
+/* a cat in braille dots: white, its doodles red */
 static const char *logo[] = {
-	C(97) "      ∧___∧  " C(91) "♥" "   ",
-	C(97) "     (=" C(96) "-" C(95) "ω" C(96) "-" C(97) "=)     ",
-	C(37) " ▄▄▄▄" C(97) "(\")" C(37) "▄" C(97) "(\")" C(37) "▄▄▄▄ ",
-	C(37) " █             █ ",
-	C(37) " █      " C(91) "♥" C(37) "      █ ",
-	C(37) " █             █ ",
-	C(37) " ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀ ",
-	C(90) "▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀",
+	"               " C(97) "⣼⣿⡄                     ",
+	"      " C(91) "⣴⠚⡄⢫⠉⢩⠃ " C(97) "⣰⣿⣿⡇           ⢀⣤⡄       ",
+	"   " C(91) "⠠⡞⠳⡜⠦⠚⠘⠒⠋ " C(97) "⢰⣿⣿⣿⡇          ⣰⣿⣿⡇       ",
+	"    " C(91) "⠈⠚⠁     " C(97) "⢠⣿⣿⣿⣿⣧        ⢠⣾⣿⣿⣿⠁       ",
+	"            " C(97) "⣼⣿⣿⣿⣿⣿       ⣰⣿⣿⣿⣿⣿        ",
+	"           " C(97) "⢰⣿⣿⣿⣿⣿⣿     ⢀⣾⣿⣿⣿⣿⣿⡇        ",
+	"          " C(97) "⢀⣿⣿⣿⣿⣿⣿⣿⣤⣄⣀⡀⣠⣿⣿⣿⣿⣿⣿⣿⠇        ",
+	"        " C(97) "⢀⣼⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿    " C(91) "⢸⠉⠉⢰⠂",
+	"        " C(97) "⣾⣿⣿⠟⠛⠙⠻⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡏    " C(91) "⡇ ⡰⠃ ",
+	"       " C(97) "⢰⣿⣿⠃  ⢰⡆⢻⣿⣿⣿⣿⣿⡿⠛⠛⠻⣿⣿⣿⣿    " C(91) "⢰⠁⡰⠁  ",
+	"    " C(97) "⣶⣦⣤⠘⣿⣿⣆  ⢿⠇⣼⣿⣿⣿⣿⠛⢸⡇  ⠙⣿⣿⣿⣇   " C(91) "⠈⠒⠁   ",
+	"    " C(97) "⢀⣀⣁ ⠻⣿⣿⣷⣦⣤⣶⣿⣿⣿⣿⣇⡀⣾⠃  ⢠⣿⣿⣿⡇ " C(91) "⡔⠒⠲⡄    ",
+	"   " C(97) "⠘⠛⠋⠉  ⠈⠻⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣶⣤⣤⣴⣾⣿⣿⠟  " C(91) "⠱⠤⣀⠇    ",
+	"            " C(97) "⠈⠛⠻⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠟⠁⢀⣤⣀        ",
+	"                 " C(97) "⠈⠉⠉⠉⠉⠉⠉  ⣀⡀ ⠉⠙⠓       ",
+	" " C(91) "⡗⡤⡲                      " C(97) "⠈⢻⠆          ",
+	C(91) "⣴⣫⢸⢷⣤                                  ",
+	" " C(91) "⠈⠞                                    ",
 };
 #define LOGO_LINES (int)(sizeof logo / sizeof *logo)
-#define BLANK "                 "
+#define LOGO_W 39
+#define BLANK "                                       "
 
 /* ------------------------------------------------ tiny output buffer */
 static char out[8192];
@@ -199,7 +208,8 @@ int main(int argc, char **argv)
 		}
 	}
 
-	int with_logo = !plain && !(have_ws && ws.ws_col < 52);
+	/* the logo, two spaces and the longest info line (~36) must fit */
+	int with_logo = !plain && !(have_ws && ws.ws_col < LOGO_W + 2 + 36);
 	int rows = nlines > LOGO_LINES ? nlines : LOGO_LINES;
 	put("\n");
 	for (int i = 0; i < rows; i++) {
