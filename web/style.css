@@ -1,6 +1,6 @@
 :root {
-  --bg: #0d1117;
-  --fg: #d7dae0;
+  --bg: #080000;
+  --fg: #ff5c5c;
   --line: color-mix(in srgb, var(--fg) 18%, transparent);
   --muted: color-mix(in srgb, var(--fg) 60%, transparent);
   --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
@@ -34,6 +34,19 @@ html, body {
 }
 
 #term .xterm { height: 100%; }
+
+/* red theme: a faint glow, scanlines and a vignette, like an old CRT */
+[data-theme="red"] #term { position: relative; }
+[data-theme="red"] #term::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 10;
+  background:
+    repeating-linear-gradient(to bottom, rgb(0 0 0 / 0.16) 0 1px, transparent 1px 3px),
+    radial-gradient(ellipse at center, transparent 60%, rgb(0 0 0 / 0.45) 100%);
+}
+@media (hover: hover) {
+  [data-theme="red"] #term .xterm-screen { filter: drop-shadow(0 0 2px rgb(255 20 20 / 0.45)); }
+}
+[data-theme="red"] .box { border-color: #5c0d0d; box-shadow: 0 0 18px rgb(255 0 0 / 0.18); }
 #term .xterm-viewport { background: var(--bg) !important; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
 #term.bell { animation: bell 0.18s ease-out; }
 @keyframes bell { from { filter: brightness(1.6); } to { filter: none; } }

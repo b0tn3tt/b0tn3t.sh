@@ -75,8 +75,9 @@ async function setRenderer(kind) {
 }
 
 function setTheme(name) {
-  const t = THEMES[name] || THEMES.dark;
+  const t = THEMES[name] || THEMES.red;
   term.options.theme = t;
+  document.documentElement.dataset.theme = THEMES[name] ? name : "red";
   document.documentElement.style.setProperty("--bg", t.background);
   document.documentElement.style.setProperty("--fg", t.foreground);
   document.querySelector('meta[name="theme-color"]').setAttribute("content", t.background);

@@ -19,6 +19,12 @@ function mono(hex, bg = "#050805") {
 }
 
 export const THEMES = {
+  // the default: black and red
+  red: {
+    background: "#080000", foreground: "#ff5c5c", cursor: "#ff1a1a", cursorAccent: "#080000", selectionBackground: "#5c0d0d",
+    black: "#1a0505", red: "#ff2a2a", green: "#ff4d4d", yellow: "#ff8c66", blue: "#d42a2a", magenta: "#ff3d77", cyan: "#ff7a7a", white: "#e8b4b4",
+    brightBlack: "#a33a3a", brightRed: "#ff4040", brightGreen: "#ff2a2a", brightYellow: "#ffa385", brightBlue: "#ff6666", brightMagenta: "#ff5c8f", brightCyan: "#ff9999", brightWhite: "#ffe5e5",
+  },
   dark: { ...base, background: "#0d1117", foreground: "#d7dae0", cursor: "#5af78e", cursorAccent: "#0d1117", selectionBackground: "#2f3b4d" },
   light: {
     background: "#fbfbf8", foreground: "#24292f", cursor: "#24292f", cursorAccent: "#fbfbf8", selectionBackground: "#c9d7ea",
@@ -63,7 +69,7 @@ const SCHEMA = {
 
 export function defaults(touch = false) {
   return {
-    theme: "dark", font: "system", fontSize: touch ? 13 : 15, cursor: "block", blink: true,
+    theme: "red", font: "system", fontSize: touch ? 13 : 15, cursor: "block", blink: true,
     renderer: "auto", scrollback: 10000, keys: "auto", copyOnSelect: false, autosave: true,
   };
 }

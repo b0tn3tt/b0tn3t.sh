@@ -29,17 +29,17 @@ test("settings persist only what differs from defaults", () => {
   assert.equal(again.get("fontSize"), 18);
   again.reset();
   assert.equal(st.getItem("b0tn3t.settings"), null);
-  assert.equal(again.get("theme"), "dark");
+  assert.equal(again.get("theme"), "red");
 });
 
 test("bad or stale stored values are dropped, not fatal", () => {
   const st = new MemStorage({ "b0tn3t.settings": JSON.stringify({ theme: "gone", fontSize: 999, cursor: "bar", nope: 1 }) });
   const s = new Settings(st);
-  assert.equal(s.get("theme"), "dark");
+  assert.equal(s.get("theme"), "red");
   assert.equal(s.get("fontSize"), 15);
   assert.equal(s.get("cursor"), "bar");
   const broken = new Settings(new MemStorage({ "b0tn3t.settings": "{not json" }));
-  assert.equal(broken.get("theme"), "dark");
+  assert.equal(broken.get("theme"), "red");
 });
 
 test("validation", () => {

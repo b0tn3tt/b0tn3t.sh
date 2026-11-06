@@ -231,7 +231,7 @@ def test_reset_wipes_everything(page):
     time.sleep(1.5)
     page.open()
     assert "No such file" in page.run("cat /root/persist.txt")
-    assert page.js("return window.vm.settings.get('theme')") == "dark"
+    assert page.js("return window.vm.settings.get('theme')") == "red"
     assert page.js("return localStorage.getItem('b0tn3t.settings')") is None
 
 
