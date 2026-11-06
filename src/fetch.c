@@ -11,11 +11,13 @@
 #define C(n) "\033[" #n "m"
 #define RST "\033[0m"
 
-/* a kaomoji cat (=^-ω-^=), eyes closed, with a heart, behind a laptop */
+/* a kaomoji cat, eyes closed, with a heart, behind a laptop:
+ *   ∧___∧
+ *  (=-ω-=)  */
 static const char *logo[] = {
-	"            " C(91) "♥" "    ",
-	C(97) "    (=^" C(96) "-" C(95) "ω" C(96) "-" C(97) "^=)    ",
-	C(37) " ▄▄▄" C(97) "(\")" C(37) "▄▄▄" C(97) "(\")" C(37) "▄▄▄ ",
+	C(97) "      ∧___∧  " C(91) "♥" "   ",
+	C(97) "     (=" C(96) "-" C(95) "ω" C(96) "-" C(97) "=)     ",
+	C(37) " ▄▄▄▄" C(97) "(\")" C(37) "▄" C(97) "(\")" C(37) "▄▄▄▄ ",
 	C(37) " █             █ ",
 	C(37) " █      " C(91) "♥" C(37) "      █ ",
 	C(37) " █             █ ",
