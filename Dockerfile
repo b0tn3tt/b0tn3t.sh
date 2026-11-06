@@ -279,12 +279,22 @@ RUN nice -n 19 zstd -19 -q -T2 --rm /image/state.bin -o /image/state.bin.zst && 
     python3 /build/manifest.py /image "$(cat /image/mem)" 2 /build/cmdline && rm /image/mem
 
 # ---------------------------------------------------------------- site
+# The page's own files get ?v=<hash of all of them> on every URL that
+# loads code or styles (index.html, imports): a browser never mixes a
+# cached old module with a new one, and needs no reload after an update.
+FROM toolchain AS web
+COPY web/index.html web/style.css /w/
+COPY web/js/ /w/js/
+COPY --from=xterm /out/ /w/vendor/xterm/
+COPY vendor/libv86.mjs vendor/v86.wasm vendor/seabios.bin vendor/vgabios.bin /w/vendor/v86/
+RUN cd /w && v=$(find . -type f | LC_ALL=C sort | xargs cat | sha256sum | cut -c1-12) && \
+    sed -i -E "s#((from|import\() *\"\.\.?/[^\"?]+\.m?js)\"#\1?v=$v\"#g" js/*.js && \
+    sed -i -E "s#((href|src)=\"(js/app\.js|style\.css|vendor/xterm/xterm\.css))\"#\1?v=$v\"#g" index.html && \
+    grep -q "app.js?v=$v" index.html && grep -q "settings.js?v=$v" js/app.js
+
 FROM scratch AS site
-COPY web/index.html web/style.css /
+COPY --from=web /w/ /
 COPY cat_paw_loading.gif /favicon.gif
-COPY web/js/ /js/
-COPY --from=xterm /out/ /vendor/xterm/
-COPY vendor/libv86.mjs vendor/v86.wasm vendor/seabios.bin vendor/vgabios.bin /vendor/v86/
 COPY --from=image /image/ /image/
 
 # ---------------------------------------------------------------- reproducibility
