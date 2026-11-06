@@ -242,6 +242,11 @@ def test_network_through_the_page(page, server):
     # v86's fetch adapter fetch()es http://<Host header><path>: here, the page's own origin
     out = page.run(f"curl -s -H 'Host: {origin}' https://b0tn3t.test/image/manifest.json | head -c 200", timeout=60)
     assert '"build"' in out, out
+    # the manifest has no final newline: on the screen curl adds one, so the
+    # next prompt starts its own line
+    page.run(f"curl -s -H 'Host: {origin}' http://b0tn3t.test/image/manifest.json", timeout=60)
+    lines = page.screen().rstrip().splitlines()
+    assert lines[-2].rstrip() == "}" and lines[-1].startswith("root@b0tn3t"), lines[-3:]
 
 
 def test_reboot_and_poweroff_keep_files(page):

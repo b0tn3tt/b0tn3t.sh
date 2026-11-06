@@ -3,6 +3,7 @@
 #   curl [-sSLkfvI] [-o file | -O] [-H hdr] [-A agent] [-d data] [-m secs] url
 # Requests leave the machine through the browser's fetch(), so a site has
 # to allow cross-origin requests (CORS) for its answer to reach us.
+. /usr/share/b0tn3t/cors_hint.sh
 usage() { sed -n '2,5s/^# \{0,1\}//p' "$0"; exit "${1:-2}"; }
 q() { printf "'%s' " "$(printf %s "$1" | sed "s/'/'\\\\''/g")"; }
 out=- head=0 args= url= verbose=0
@@ -47,8 +48,24 @@ if [ $head = 1 ]; then
   exit 0
 fi
 [ $verbose = 1 ] && quiet= || quiet=-q
-if [ -z "$out" ]; then eval "busybox wget $quiet $args $(q "$url")"
-else eval "busybox wget $quiet -O $(q "$out") $args $(q "$url")"; fi
+err=/tmp/.curl.$$
+trap 'rm -f "$err" "$err.body"' EXIT
+if [ -z "$out" ]; then eval "busybox wget $quiet $args $(q "$url")" 2>"$err"
+elif [ "$out" = - ] && [ -t 1 ]; then
+  # on the screen: end with a newline, so the prompt does not stick to
+  # an answer like `curl ifconfig.me/ip` (zsh shows a % there, ash nothing)
+  eval "busybox wget $quiet -O $(q "$err.body") $args $(q "$url")" 2>"$err"
+  rc=$?
+  cat "$err.body" 2>/dev/null
+  # $(...) drops a final newline: anything left means there was none
+  [ -n "$(tail -c 1 "$err.body" 2>/dev/null)" ] && echo
+  (exit $rc)
+else eval "busybox wget $quiet -O $(q "$out") $args $(q "$url")" 2>"$err"; fi
 rc=$?
-[ $rc = 0 ] || echo "curl: could not fetch $url (the site may not allow requests from other sites, CORS)" >&2
+if grep -q "502 Fetch Error" "$err"; then
+  grep -v "502 Fetch Error" "$err" >&2
+  cors_hint curl "$url"
+else
+  cat "$err" >&2
+fi
 exit $rc

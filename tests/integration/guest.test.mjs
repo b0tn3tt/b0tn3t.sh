@@ -262,7 +262,15 @@ describe("warm machine (the state the page loads)", () => {
       assert.match((await g.link.exec(`curl -I http://${host}/`)).out, /HTTP\/1\.[01] 200/);
       const e = await g.link.exec(`curl -s http://${host}/404`);
       assert.notEqual(e.code, 0);
-      assert.match(e.out, /could not fetch/);
+      assert.match(e.out, /404 Not Found/);
+      assert.doesNotMatch(e.out, /CORS/, "a real HTTP error is not blamed on CORS");
+      // a fetch() the browser refuses (here: nothing listens on port 1)
+      for (const cmd of ["curl -s http://1.external/x", "wget -q 1.external/x"]) {
+        const r = await g.link.exec(cmd);
+        assert.notEqual(r.code, 0, cmd);
+        assert.match(r.out, /1\.external does not let web pages read it \(no CORS\)[\s\S]*curl ifconfig\.me\/ip/, cmd);
+        if (cmd.startsWith("curl")) assert.doesNotMatch(r.out, /502 Fetch Error/, cmd);
+      }
     } finally { srv.close(); }
   });
 
