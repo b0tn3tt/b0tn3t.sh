@@ -15,6 +15,7 @@ import { Quiet } from "./quiet.js";
 import { netDevice } from "./net.js";
 import { Power } from "./power.js";
 import { linkProvider, openLink } from "./links.js";
+import { Splash } from "./splash.js";
 
 const $ = (s) => document.querySelector(s);
 const params = new URLSearchParams(location.search);
@@ -114,7 +115,6 @@ setTheme(settings.get("theme"));
 if (settings.get("font") !== "system") setFont(settings.get("font")).catch(() => {});
 setRenderer(settings.get("renderer"));
 
-const dim = (s) => term.write(`\x1b[90m${s}\x1b[0m`);
 
 // ------------------------------------------------------------ layout
 let resizeTimer = 0;
@@ -324,13 +324,17 @@ async function loadManifest() {
 async function boot() {
   layout();
   term.focus();
-  dim("b0tn3t.sh · starting the machine…");
+  const fresh = params.has("fresh") || params.has("boot");
+  const splash = new Splash(term);
+  splash.start(["image manifest", params.has("boot") ? "downloading the kernel" : "downloading the machine", params.has("boot") ? "starting the kernel" : "restoring memory"]);
+  window.vm.splash = splash;
   manifest = await loadManifest();
+  splash.step(1, `build ${manifest.build}`);
   const v = `?v=${manifest.build}`;
   memMB = manifest.mem;
 
   let saved = null;
-  if (!params.has("fresh") && !params.has("boot")) {
+  if (!fresh) {
     saved = await store.get(MAIN).catch(() => null);
     if (saved && saved.build !== manifest.build) {
       await store.del(MAIN).catch(() => {});
@@ -356,6 +360,9 @@ async function boot() {
 
   let screenBytes;
   if (saved) {
+    splash.steps[1].label = "opening your saved machine";
+    splash.filled();
+    splash.step(2, mb(saved.blob.size || saved.blob.byteLength || 0));
     atLeast(saved.tick || 0);
     opts.initial_state = { buffer: (await gunzip(saved.blob)).buffer };
     screenBytes = saved.screen;
@@ -370,8 +377,10 @@ async function boot() {
   emulator = new V86(opts);
   window.vm.emulator = emulator;
   emulator.add_listener("download-progress", (e) => {
-    if (!e.lengthComputable || !/state|bzImage/.test(e.file_name)) return;
-    term.write(`\r\x1b[2K\x1b[90mb0tn3t.sh · loading the machine ${mb(e.loaded)} / ${mb(e.total)}\x1b[0m`);
+    if (!e.lengthComputable || !/state|bzImage/.test(e.file_name) || splash.steps[1].state !== "run") return;
+    splash.progress(e.loaded / e.total);
+    splash.note(1, `${mb(e.loaded)} / ${mb(e.total)}`);
+    if (e.loaded >= e.total && splash.steps[2].state === "wait") { splash.filled(); splash.step(2); }
   });
 
   termPump = portPump(emulator, 0);
@@ -418,8 +427,8 @@ async function boot() {
       },
     });
     window.vm.power = power;
-    term.write("\x1b[2K\r\x1b[H\x1b[2J");
     const s = await screenBytes;
+    splash.done();
     if (s) term.write(typeof s === "string" ? s : new Uint8Array(s));
     mark("screen");
     sendResize();
@@ -829,5 +838,6 @@ if (navigator.storage && navigator.storage.persist) navigator.storage.persist().
 $("#term").addEventListener("click", () => term.focus());
 boot().catch((e) => {
   console.error(e);
+  window.vm.splash?.done();
   term.write(`\r\n\x1b[31mcould not start the machine: ${e.message}\x1b[0m\r\n`);
 });
