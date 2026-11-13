@@ -285,6 +285,7 @@ RUN nice -n 19 zstd -19 -q -T2 --rm /image/state.bin -o /image/state.bin.zst && 
 FROM toolchain AS web
 COPY web/index.html web/style.css web/icons/ /w/
 COPY web/js/ /w/js/
+COPY web/well-known/ /w/.well-known/
 COPY --from=xterm /out/ /w/vendor/xterm/
 COPY vendor/libv86.mjs vendor/v86.wasm vendor/seabios.bin vendor/vgabios.bin /w/vendor/v86/
 RUN cd /w && v=$(find . -type f | LC_ALL=C sort | xargs cat | sha256sum | cut -c1-12) && \

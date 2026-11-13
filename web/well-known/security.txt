@@ -1,0 +1,5 @@
+# Found a security problem on b0tn3t.sh? Please tell me first, privately.
+Contact: https://t.me/b0tn3t
+Expires: 2027-11-13T00:00:00.000Z
+Preferred-Languages: en, ru
+Canonical: https://b0tn3t.sh/.well-known/security.txt
