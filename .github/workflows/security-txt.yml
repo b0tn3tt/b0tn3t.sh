@@ -1,0 +1,47 @@
+name: security.txt expiry
+
+# RFC 9116 files go stale after their Expires date. Once a month this checks
+# both live files and opens an issue (GitHub notifies the owner) when one has
+# fewer than 30 days left or cannot be fetched. Fix: bump Expires by a year in
+#   b0tn3t.sh:      web/well-known/security.txt
+#   blog.b0tn3t.sh: static/.well-known/security.txt
+
+on:
+  schedule:
+    - cron: '23 6 1 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check Expires
+        shell: bash
+        id: check
+        run: |
+          set +e
+          tools/check-security-txt.sh \
+            https://b0tn3t.sh/.well-known/security.txt \
+            https://blog.b0tn3t.sh/.well-known/security.txt | tee report.txt
+          echo "bad=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+      - name: Open an issue
+        if: steps.check.outputs.bad != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title="security.txt expires soon: bump Expires"
+          if gh issue list --state open --search "in:title \"$title\"" --json number --jq length | grep -qx 0; then
+            {
+              echo "Days left before Expires (or the problem):"
+              echo; echo '```'; cat report.txt; echo '```'; echo
+              echo "Bump \`Expires\` by a year (RFC 9116: at most a year ahead):"
+              echo "- b0tn3t.sh: \`web/well-known/security.txt\`"
+              echo "- blog.b0tn3t.sh: \`static/.well-known/security.txt\` in b0tn3tt/blog.b0tn3t.sh"
+            } > body.md
+            gh issue create --title "$title" --body-file body.md
+          fi
